@@ -31,11 +31,14 @@ class PipelineGraph:
         if len(names) != len(set(names)):
             raise PipelineError("Duplicate step names in pipeline")
 
+    # Reserved step names injected by the executor at runtime
+    RESERVED_STEPS = {"_input"}
+
     def _check_dependencies_exist(self) -> None:
         for step in self.steps.values():
             for port, ref in step.inputs.items():
                 src_step = ref.split(".")[0]
-                if src_step not in self.steps:
+                if src_step not in self.steps and src_step not in self.RESERVED_STEPS:
                     raise PipelineError(
                         f"Step '{step.name}' references unknown step '{src_step}'"
                     )

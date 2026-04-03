@@ -3,6 +3,7 @@
 from bioforge.modules.assembly.core.config import AssemblyConfig
 from bioforge.modules.assembly.core.solver import AssemblySolver
 from bioforge.modules.assembly.schemas import AssemblyRequest, AssemblyResult
+from bioforge.modules.assembly import tools as assembly_tools
 from bioforge.modules.base import (
     BioForgeModule,
     ModuleCapability,
@@ -33,6 +34,27 @@ class AssemblyModule(BioForgeModule):
                 output_schema=AssemblyResult.model_json_schema(),
                 handler=self._design_assembly,
             ),
+            ModuleCapability(
+                name="calculate_tm",
+                description="Calculate melting temperature and properties for a DNA oligonucleotide",
+                input_schema={"type": "object", "properties": {"sequence": {"type": "string"}}, "required": ["sequence"]},
+                output_schema={"type": "object"},
+                handler=assembly_tools.calculate_tm,
+            ),
+            ModuleCapability(
+                name="check_overhang_quality",
+                description="Evaluate overhang sequences against assembly quality constraints (Tm, GC, homopolymers, hairpins)",
+                input_schema={"type": "object", "properties": {"overhangs": {"type": "array", "items": {"type": "string"}}}, "required": ["overhangs"]},
+                output_schema={"type": "object"},
+                handler=assembly_tools.check_overhang_quality,
+            ),
+            ModuleCapability(
+                name="reverse_complement",
+                description="Compute the reverse complement of a DNA sequence",
+                input_schema={"type": "object", "properties": {"sequence": {"type": "string"}}, "required": ["sequence"]},
+                output_schema={"type": "object"},
+                handler=assembly_tools.reverse_complement_tool,
+            ),
         ]
 
     def pipeline_steps(self) -> list[ModulePipelineStep]:
@@ -44,6 +66,15 @@ class AssemblyModule(BioForgeModule):
                 output_ports={"result": "AssemblyResult"},
                 handler=self._design_assembly_step,
             ),
+        ]
+
+    def mcp_tools(self) -> list:
+        """Return tool functions for MCP exposure."""
+        return [
+            assembly_tools.design_assembly,
+            assembly_tools.calculate_tm,
+            assembly_tools.check_overhang_quality,
+            assembly_tools.reverse_complement_tool,
         ]
 
     async def _design_assembly(self, request: dict) -> dict:

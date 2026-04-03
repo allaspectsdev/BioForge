@@ -28,12 +28,11 @@ NN_PARAMS: dict[str, tuple[float, float]] = {
     "CC": (-8000, -19.9),
 }
 
-# Initiation parameters
-INIT_PARAMS = {
-    "init": (0, -10.8),  # ΔH, ΔS for helix initiation
-    "init_GC": (0, -2.8),  # Terminal GC
-    "init_AT": (2300, 4.1),  # Terminal AT
-}
+# Initiation parameters (SantaLucia 1998, Table 2)
+# Each duplex has two ends; each end contributes an initiation term
+# based on whether that terminal base pair is GC or AT.
+INIT_GC = (100, -2.8)     # ΔH cal/mol, ΔS cal/mol/K for terminal GC pair
+INIT_AT = (2300, 4.1)     # ΔH cal/mol, ΔS cal/mol/K for terminal AT pair
 
 R = 1.987  # Gas constant in cal/(mol·K)
 
@@ -150,21 +149,20 @@ class ThermoEngine:
                 dh_total += dh
                 ds_total += ds
 
-        # Initiation
-        dh_total += INIT_PARAMS["init"][0]
-        ds_total += INIT_PARAMS["init"][1]
-
-        # Terminal corrections
+        # Initiation: one term per terminal base pair
         for terminal in (seq[0], seq[-1]):
             if terminal in ("G", "C"):
-                dh_total += INIT_PARAMS["init_GC"][0]
-                ds_total += INIT_PARAMS["init_GC"][1]
+                dh_total += INIT_GC[0]
+                ds_total += INIT_GC[1]
             else:
-                dh_total += INIT_PARAMS["init_AT"][0]
-                ds_total += INIT_PARAMS["init_AT"][1]
+                dh_total += INIT_AT[0]
+                ds_total += INIT_AT[1]
 
-        # Salt correction (SantaLucia 1998)
-        na_eq = 50.0  # Default Na+ equivalent
+        # Salt correction (Owczarzy 2004 simplified):
+        # Tm_salt = Tm_1M + (4.29 * fGC - 3.95) * 1e-5 * ln([Na+]) + 9.40e-6 * (ln[Na+])^2
+        # For the NN method, we apply the SantaLucia 1998 entropy correction:
+        # ΔS_salt = 0.368 * (n-1) * ln([Na+])   (units: cal/mol/K, [Na+] in M)
+        na_eq = 50.0  # Default Na+ equivalent in mM
         ds_total += 0.368 * (len(seq) - 1) * math.log(na_eq / 1000.0)
 
         # Tm = ΔH / (ΔS + R·ln(Ct/4)) - 273.15

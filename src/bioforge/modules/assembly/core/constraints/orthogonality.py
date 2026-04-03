@@ -89,10 +89,10 @@ class OrthogonalityConstraint(BaseConstraint):
                         )
                     )
 
-            # Check each overhang against reverse complements of other overhangs
-            for j in range(k):
-                if i == j:
-                    continue
+        # Check each overhang against reverse complements of OTHER overhangs
+        # Only check (i, j) where j > i to avoid double-counting
+        for i in range(k):
+            for j in range(i + 1, k):
                 dist = hamming_matrix[i, k + j]  # i vs RC(j)
                 if dist < min_hamming:
                     violations.append(
@@ -100,6 +100,16 @@ class OrthogonalityConstraint(BaseConstraint):
                             constraint_name=self.name,
                             severity=ConstraintSeverity.FAIL,
                             message=f"Overhang {i} vs RC({j}): Hamming distance {dist} < {min_hamming}",
+                            indices=[i, j],
+                        )
+                    )
+                dist_rev = hamming_matrix[j, k + i]  # j vs RC(i)
+                if dist_rev < min_hamming:
+                    violations.append(
+                        ConstraintViolation(
+                            constraint_name=self.name,
+                            severity=ConstraintSeverity.FAIL,
+                            message=f"Overhang {j} vs RC({i}): Hamming distance {dist_rev} < {min_hamming}",
                             indices=[i, j],
                         )
                     )

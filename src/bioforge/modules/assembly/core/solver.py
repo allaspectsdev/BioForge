@@ -5,6 +5,7 @@ import random
 import time
 from dataclasses import dataclass, field
 
+from bioforge.core.exceptions import NoFeasiblePartitionError
 from bioforge.modules.assembly.core.config import AssemblyConfig
 from bioforge.modules.assembly.core.evaluator import Evaluator
 from bioforge.modules.assembly.core.generator import generate_partition
@@ -53,11 +54,13 @@ class AssemblySolver:
         start_time = time.monotonic()
         seq_len = len(sequence)
 
-        best_partition = None
-        best_result = None
+        best_partition: Partition | None = None
+        best_result: ConstraintResult | None = None
         best_score = -1.0
+        restarts_used = 0
 
-        for restart in range(self.config.max_restarts):
+        for restart in range(max(1, self.config.max_restarts)):
+            restarts_used = restart + 1
             # Generate initial candidate
             candidate = generate_partition(seq_len, self.config, self.rng)
 
@@ -78,8 +81,8 @@ class AssemblySolver:
                 self.thermo.clear_cache()
 
         elapsed = time.monotonic() - start_time
-        assert best_partition is not None
-        assert best_result is not None
+        if best_partition is None or best_result is None:
+            raise NoFeasiblePartitionError("Solver produced no partitions")
 
         # Compute quality scores
         quality = self.scorer.score(best_partition, sequence)
@@ -112,7 +115,7 @@ class AssemblySolver:
             constraint_result=best_result,
             quality_scores=quality,
             feasible=best_result.passed,
-            restarts_used=restart + 1,
+            restarts_used=restarts_used,
             total_time_s=round(elapsed, 3),
             fragments=fragments,
             overhangs=overhangs,

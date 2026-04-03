@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import aioboto3
+from botocore.exceptions import ClientError
 
 
 class ObjectStorage:
@@ -27,7 +28,7 @@ class ObjectStorage:
         async with self._client() as client:
             try:
                 await client.head_bucket(Bucket=self.bucket)
-            except client.exceptions.ClientError:
+            except ClientError:
                 await client.create_bucket(Bucket=self.bucket)
 
     async def put(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
@@ -50,5 +51,5 @@ class ObjectStorage:
             try:
                 await client.head_object(Bucket=self.bucket, Key=key)
                 return True
-            except client.exceptions.ClientError:
+            except ClientError:
                 return False

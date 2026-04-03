@@ -16,9 +16,10 @@ async def design_assembly(args: dict) -> dict:
     seed = args.get("seed")
     config_overrides = args.get("constraints", {})
 
+    valid_fields = AssemblyConfig.__dataclass_fields__
     config = AssemblyConfig(**{
         k: v for k, v in config_overrides.items()
-        if hasattr(AssemblyConfig, k) and v is not None
+        if k in valid_fields and v is not None
     }) if config_overrides else AssemblyConfig()
 
     solver = AssemblySolver(config=config, seed=seed)

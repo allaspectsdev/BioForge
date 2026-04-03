@@ -46,6 +46,10 @@ class Optimizer:
 
             # Select which boundary to perturb based on violations
             candidate = self._perturb(current, sequence, best_result)
+
+            # Always cool, even if perturbation failed
+            temp *= self.config.sa_cooling_rate
+
             if candidate is None:
                 continue
 
@@ -63,9 +67,6 @@ class Optimizer:
                     best_score = candidate_score
                     best_result = result
 
-            # Cool
-            temp *= self.config.sa_cooling_rate
-
         return best, best_result
 
     def _perturb(
@@ -75,24 +76,30 @@ class Optimizer:
         if not partition.boundaries:
             return None
 
-        # Pick a boundary to modify — prefer ones involved in violations
+        num_boundaries = len(partition.boundaries)
+
+        # Pick a boundary to modify — prefer ones adjacent to violated fragments/overhangs
         violated_indices = set()
         for v in result.violations:
             if v.severity == ConstraintSeverity.FAIL:
                 violated_indices.update(v.indices)
 
         if violated_indices:
-            # Map fragment/overhang indices to boundary indices
+            # Map fragment/overhang indices to adjacent boundary indices.
+            # Fragment i is bounded by boundary (i-1) on the left and boundary i on the right.
+            # Overhang i corresponds to boundary i.
+            candidate_boundaries = set()
+            for idx in violated_indices:
+                if 0 <= idx < num_boundaries:
+                    candidate_boundaries.add(idx)       # boundary on right of fragment idx
+                if 0 <= idx - 1 < num_boundaries:
+                    candidate_boundaries.add(idx - 1)   # boundary on left of fragment idx
+
             boundary_idx = self.rng.choice(
-                [
-                    i
-                    for i in range(len(partition.boundaries))
-                    if i in violated_indices or (i + 1) in violated_indices
-                ]
-                or list(range(len(partition.boundaries)))
+                list(candidate_boundaries) or list(range(num_boundaries))
             )
         else:
-            boundary_idx = self.rng.randint(0, len(partition.boundaries) - 1)
+            boundary_idx = self.rng.randint(0, num_boundaries - 1)
 
         # Try boundary position perturbation or overhang length adjustment
         if self.rng.random() < 0.7:
@@ -101,7 +108,7 @@ class Optimizer:
             new_boundaries = list(partition.boundaries)
             new_boundaries[boundary_idx] = partition.boundaries[boundary_idx] + delta
 
-            # Validate ordering and bounds
+            # Clamp to valid range
             new_boundaries[boundary_idx] = max(
                 self.config.min_fragment_bp,
                 min(

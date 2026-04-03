@@ -31,18 +31,19 @@ class CompositeConstraint(BaseConstraint):
     def check(self, partition: Partition, sequence: str) -> ConstraintResult:
         all_violations = []
         weighted_score = 0.0
-        total_weight = 0.0
+        total_weight = sum(w for _, w in self.constraints)
         all_passed = True
 
         for constraint, weight in self.constraints:
             result = constraint.check(partition, sequence)
             all_violations.extend(result.violations)
             weighted_score += result.score * weight
-            total_weight += weight
 
             if not result.passed:
                 all_passed = False
                 # Early termination on hard failures for C1 (fragment length)
+                # Skipped constraints contribute 0 to weighted_score but are
+                # still counted in total_weight, correctly penalizing the score.
                 if constraint.name == "fragment_length":
                     fail_count = sum(
                         1
@@ -50,21 +51,6 @@ class CompositeConstraint(BaseConstraint):
                         if v.severity == ConstraintSeverity.FAIL
                     )
                     if fail_count > 0:
-                        # Score the rest as 0
-                        remaining_weight = sum(
-                            w for _, w in self.constraints if _ is not constraint
-                        ) - sum(
-                            w
-                            for c, w in self.constraints
-                            if c.name != constraint.name
-                            and c.name
-                            in [
-                                cc.name
-                                for cc, _ in self.constraints[
-                                    : self.constraints.index((constraint, weight)) + 1
-                                ]
-                            ]
-                        )
                         break
 
         composite_score = weighted_score / total_weight if total_weight > 0 else 0.0

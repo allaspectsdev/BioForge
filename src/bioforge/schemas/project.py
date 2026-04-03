@@ -18,11 +18,12 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectRead(BaseModel):
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
     id: UUID
     workspace_id: UUID
     name: str
     description: str | None
+    metadata: dict = Field(default_factory=dict, alias="metadata_")
     created_at: datetime
     updated_at: datetime
