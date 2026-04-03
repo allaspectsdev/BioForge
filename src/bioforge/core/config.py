@@ -1,0 +1,35 @@
+from pydantic import Field
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    model_config = {"env_prefix": "BIOFORGE_", "env_file": ".env", "extra": "ignore"}
+
+    # Database
+    database_url: str = "postgresql+asyncpg://bioforge:bioforge@localhost:5432/bioforge"
+
+    # Object Storage (S3/MinIO)
+    s3_endpoint: str = "http://localhost:9000"
+    s3_access_key: str = "minioadmin"
+    s3_secret_key: str = "minioadmin"
+    s3_bucket: str = "bioforge-data"
+
+    # AI
+    anthropic_api_key: str = ""
+    default_model: str = "claude-sonnet-4-20250514"
+    agent_max_turns: int = 25
+    agent_max_budget_usd: float = 1.0
+
+    # Platform
+    debug: bool = False
+    log_level: str = "INFO"
+
+
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
