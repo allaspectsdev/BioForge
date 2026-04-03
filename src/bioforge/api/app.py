@@ -63,6 +63,7 @@ def create_app() -> FastAPI:
         pipelines,
         projects,
         results,
+        search,
         sequences,
         workspaces,
     )
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(results.router, prefix="/api/v1/results", tags=["results"])
     app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
     app.include_router(modules.router, prefix="/api/v1/modules", tags=["modules"])
+    app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 
     @app.get("/health")
     async def health() -> dict:
