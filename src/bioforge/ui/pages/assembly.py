@@ -3,6 +3,7 @@
 import streamlit as st
 
 from bioforge.modules.assembly.core.config import AssemblyConfig
+from bioforge.modules.assembly.core.models import gc_content
 from bioforge.modules.assembly.core.solver import AssemblySolver
 
 
@@ -17,10 +18,10 @@ def show():
         min_frag = st.slider("Min fragment (bp)", 1000, 5000, 2000, 100)
         max_frag = st.slider("Max fragment (bp)", 1500, 10000, 2500, 100)
         oh_len = st.slider("Overhang length (bp)", 15, 40, 25)
-        min_tm = st.slider("Min Tm (°C)", 40.0, 70.0, 50.0, 1.0)
-        max_tm = st.slider("Max Tm (°C)", 50.0, 80.0, 65.0, 1.0)
+        min_tm = st.slider("Min Tm (C)", 40.0, 70.0, 50.0, 1.0)
+        max_tm = st.slider("Max Tm (C)", 50.0, 80.0, 65.0, 1.0)
         min_hamming = st.slider("Min Hamming distance", 1, 10, 5)
-        seed = st.number_input("Random seed", value=42, min_value=0)
+        seed = int(st.number_input("Random seed", value=42, min_value=0, step=1))
 
     with col1:
         st.subheader("Input Sequence")
@@ -41,23 +42,45 @@ def show():
                 st.error(f"Invalid characters: {invalid}. Use only A, T, C, G.")
                 return
 
-            with st.spinner(f"Optimizing assembly for {len(seq):,} bp sequence..."):
-                config = AssemblyConfig(
-                    min_fragment_bp=min_frag,
-                    max_fragment_bp=max_frag,
-                    default_overhang_bp=oh_len,
-                    min_tm=min_tm,
-                    max_tm=max_tm,
-                    min_hamming_distance=min_hamming,
+            if min_frag > max_frag:
+                st.error("Min fragment length must be less than max fragment length.")
+                return
+
+            # Warn about degenerate sequences
+            gc = gc_content(seq)
+            if gc < 0.1 or gc > 0.9:
+                st.warning(
+                    f"Sequence has extreme GC content ({gc:.0%}). "
+                    "Assembly overhangs may not meet quality constraints."
                 )
-                solver = AssemblySolver(config=config, seed=seed)
-                result = solver.solve(seq)
+
+            try:
+                with st.spinner(f"Optimizing assembly for {len(seq):,} bp sequence..."):
+                    config = AssemblyConfig(
+                        min_fragment_bp=min_frag,
+                        max_fragment_bp=max_frag,
+                        default_overhang_bp=oh_len,
+                        min_tm=min_tm,
+                        max_tm=max_tm,
+                        min_hamming_distance=min_hamming,
+                    )
+                    solver = AssemblySolver(config=config, seed=seed)
+                    result = solver.solve(seq)
+            except Exception as e:
+                st.error(f"Assembly design failed: {e}")
+                return
 
             # Results
             if result.feasible:
-                st.success(f"Feasible partition found in {result.total_time_s:.2f}s ({result.restarts_used} restarts)")
+                st.success(
+                    f"Feasible partition found in {result.total_time_s:.2f}s "
+                    f"({result.restarts_used} restarts)"
+                )
             else:
-                st.warning(f"Best-effort partition (not fully feasible). {result.total_time_s:.2f}s, {result.restarts_used} restarts.")
+                st.warning(
+                    f"Best-effort partition (not fully feasible). "
+                    f"{result.total_time_s:.2f}s, {result.restarts_used} restarts."
+                )
 
             # Quality scores
             st.subheader("Quality Scores")
@@ -88,7 +111,10 @@ def show():
 
             # Violations
             if result.constraint_result.violations:
-                st.subheader("Constraint Violations")
-                for v in result.constraint_result.violations:
-                    icon = "❌" if v.severity.value == "fail" else "⚠️"
-                    st.markdown(f"{icon} **{v.constraint_name}**: {v.message}")
+                with st.expander(
+                    f"Constraint Violations ({len(result.constraint_result.violations)})",
+                    expanded=not result.feasible,
+                ):
+                    for v in result.constraint_result.violations:
+                        icon = "X" if v.severity.value == "fail" else "!"
+                        st.markdown(f"**[{icon}] {v.constraint_name}**: {v.message}")

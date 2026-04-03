@@ -71,5 +71,4 @@ def show_home():
         st.caption("design, calculate_tm, check, reverse_complement")
 
 
-if __name__ == "__main__":
-    main()
+main()

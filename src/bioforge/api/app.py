@@ -4,6 +4,8 @@ from collections.abc import AsyncGenerator
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from sqlalchemy.exc import OperationalError
+
 from bioforge.core.config import Settings, get_settings
 from bioforge.core.database import create_engine, create_session_factory
 from bioforge.core.exceptions import BioForgeError, NotFoundError, ValidationError
@@ -46,6 +48,13 @@ def create_app() -> FastAPI:
     @app.exception_handler(BioForgeError)
     async def bioforge_error_handler(request: Request, exc: BioForgeError) -> JSONResponse:
         return JSONResponse(status_code=500, content={"detail": str(exc)})
+
+    @app.exception_handler(OperationalError)
+    async def db_error_handler(request: Request, exc: OperationalError) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Database unavailable. Start PostgreSQL with: docker compose up -d"},
+        )
 
     # Routers
     from bioforge.api.routers import (

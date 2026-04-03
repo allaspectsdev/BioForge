@@ -22,8 +22,11 @@ async def design_assembly(args: dict) -> dict:
         if k in valid_fields and v is not None
     }) if config_overrides else AssemblyConfig()
 
-    solver = AssemblySolver(config=config, seed=seed)
-    result = solver.solve(sequence)
+    try:
+        solver = AssemblySolver(config=config, seed=seed)
+        result = solver.solve(sequence)
+    except Exception as e:
+        return {"error": str(e), "feasible": False}
 
     return {
         "feasible": result.feasible,

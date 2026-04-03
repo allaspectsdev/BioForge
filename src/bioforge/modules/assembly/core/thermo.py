@@ -131,9 +131,11 @@ class ThermoEngine:
     def clear_cache(self) -> None:
         self._cache.clear()
 
-    @staticmethod
-    def _nn_tm(seq: str) -> float:
-        """Pure-Python nearest-neighbor Tm calculation (SantaLucia 1998)."""
+    def _nn_tm(self, seq: str) -> float:
+        """Pure-Python nearest-neighbor Tm calculation (SantaLucia 1998).
+
+        Uses instance salt and oligo concentrations rather than hardcoded values.
+        """
         seq = seq.upper()
         if len(seq) < 2:
             return 0.0
@@ -158,17 +160,15 @@ class ThermoEngine:
                 dh_total += INIT_AT[0]
                 ds_total += INIT_AT[1]
 
-        # Salt correction (Owczarzy 2004 simplified):
-        # Tm_salt = Tm_1M + (4.29 * fGC - 3.95) * 1e-5 * ln([Na+]) + 9.40e-6 * (ln[Na+])^2
-        # For the NN method, we apply the SantaLucia 1998 entropy correction:
+        # Salt correction (SantaLucia 1998 entropy correction):
         # ΔS_salt = 0.368 * (n-1) * ln([Na+])   (units: cal/mol/K, [Na+] in M)
-        na_eq = 50.0  # Default Na+ equivalent in mM
-        ds_total += 0.368 * (len(seq) - 1) * math.log(na_eq / 1000.0)
+        ds_total += 0.368 * (len(seq) - 1) * math.log(self.na_conc / 1000.0)
 
         # Tm = ΔH / (ΔS + R·ln(Ct/4)) - 273.15
-        ct = 250e-9  # 250 nM oligo
-        if ds_total + R * math.log(ct / 4.0) == 0:
+        ct = self.oligo_conc * 1e-9  # Convert nM to M
+        denom = ds_total + R * math.log(ct / 4.0)
+        if denom == 0:
             return 0.0
 
-        tm = dh_total / (ds_total + R * math.log(ct / 4.0)) - 273.15
+        tm = dh_total / denom - 273.15
         return tm

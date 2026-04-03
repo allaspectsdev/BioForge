@@ -23,21 +23,29 @@ def design_assembly(
     Splits the sequence into fragments and designs orthogonal overhangs
     at each junction. Returns fragments, overhangs, and quality metrics.
     """
-    config = AssemblyConfig(
-        min_fragment_bp=min_fragment_bp,
-        max_fragment_bp=max_fragment_bp,
-        default_overhang_bp=overhang_length,
-    )
-    solver = AssemblySolver(config=config, seed=seed)
-    result = solver.solve(sequence)
-    return {
-        "feasible": result.feasible,
-        "num_fragments": result.partition.num_fragments,
-        "fragments": result.fragments,
-        "overhangs": result.overhangs,
-        "quality_scores": result.quality_scores,
-        "total_time_s": result.total_time_s,
-    }
+    try:
+        config = AssemblyConfig(
+            min_fragment_bp=min_fragment_bp,
+            max_fragment_bp=max_fragment_bp,
+            default_overhang_bp=overhang_length,
+        )
+        solver = AssemblySolver(config=config, seed=seed)
+        result = solver.solve(sequence)
+        return {
+            "feasible": result.feasible,
+            "num_fragments": result.partition.num_fragments,
+            "fragments": result.fragments,
+            "overhangs": result.overhangs,
+            "quality_scores": result.quality_scores,
+            "total_time_s": result.total_time_s,
+            "restarts_used": result.restarts_used,
+            "violations": [
+                {"constraint": v.constraint_name, "severity": v.severity.value, "message": v.message}
+                for v in result.constraint_result.violations
+            ],
+        }
+    except Exception as e:
+        return {"error": str(e), "feasible": False}
 
 
 @mcp.tool()
@@ -78,3 +86,7 @@ def check_overhangs(overhangs: list[str]) -> dict:
             "pass": 50 <= tm <= 65 and 0.4 <= gc <= 0.6 and longest_homopolymer(seq) <= 4,
         })
     return {"overhangs": results, "all_pass": all(r["pass"] for r in results)}
+
+
+if __name__ == "__main__":
+    mcp.run()

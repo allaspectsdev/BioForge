@@ -53,7 +53,10 @@ class TestThermo:
         engine = ThermoEngine()
         seq = "ATCGATCGATCGATCGATCGATCGA"
         primer3_tm = engine.calc_tm(seq)
-        fallback_tm = ThermoEngine._nn_tm(seq)
+        fallback_engine = ThermoEngine.__new__(ThermoEngine)
+        fallback_engine.na_conc = 50.0
+        fallback_engine.oligo_conc = 250.0
+        fallback_tm = fallback_engine._nn_tm(seq)
         # They should agree within ~5°C (different salt correction implementations)
         assert abs(primer3_tm - fallback_tm) < 10, f"primer3={primer3_tm:.1f}, fallback={fallback_tm:.1f}"
 

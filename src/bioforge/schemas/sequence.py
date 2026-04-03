@@ -38,6 +38,7 @@ class SequenceRead(BaseModel):
     name: str
     description: str | None
     sequence_type: str
+    sequence_data: str
     length: int
     gc_content: float | None
     annotations: list

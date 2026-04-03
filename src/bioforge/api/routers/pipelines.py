@@ -32,6 +32,15 @@ async def create_pipeline(
     return await service.create_definition(body)
 
 
+# Static prefix routes MUST come before dynamic /{pipeline_id} routes
+@router.get("/runs/{run_id}", response_model=PipelineRunRead)
+async def get_run(
+    run_id: UUID,
+    service: PipelineService = Depends(get_pipeline_service),
+):
+    return await service.get_run(run_id)
+
+
 @router.get("/{pipeline_id}", response_model=PipelineRead)
 async def get_pipeline(
     pipeline_id: UUID,
@@ -57,11 +66,3 @@ async def list_runs(
     service: PipelineService = Depends(get_pipeline_service),
 ):
     return await service.list_runs(pipeline_id, offset=offset, limit=limit)
-
-
-@router.get("/runs/{run_id}", response_model=PipelineRunRead)
-async def get_run(
-    run_id: UUID,
-    service: PipelineService = Depends(get_pipeline_service),
-):
-    return await service.get_run(run_id)
