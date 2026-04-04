@@ -1,5 +1,6 @@
 """BioForge AI Agent client wrapping the Anthropic API with multi-turn sessions."""
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -13,6 +14,32 @@ from bioforge.agent.system_prompts import BIOFORGE_SYSTEM_PROMPT
 from bioforge.agent.tools_registry import collect_capabilities
 from bioforge.core.config import Settings
 from bioforge.modules.registry import ModuleRegistry
+
+
+def _serialize_content_blocks(content: Any) -> list[dict]:
+    """Serialize Anthropic SDK content blocks to plain dicts for persistence.
+
+    The API returns ToolUseBlock/TextBlock objects that can't be passed back
+    directly on subsequent calls. Convert them to dict form.
+    """
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    result = []
+    for block in content:
+        if isinstance(block, dict):
+            result.append(block)
+        elif hasattr(block, "type") and block.type == "tool_use":
+            result.append({
+                "type": "tool_use",
+                "id": block.id,
+                "name": block.name,
+                "input": block.input,
+            })
+        elif hasattr(block, "type") and block.type == "text":
+            result.append({"type": "text", "text": block.text})
+        else:
+            result.append({"type": "text", "text": str(block)})
+    return result
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +64,7 @@ class Session:
     created_at: datetime = field(default_factory=datetime.utcnow)
     total_turns: int = 0
     status: str = "active"
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 @dataclass
@@ -66,6 +94,14 @@ class BioForgeAgent:
             self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         else:
             self._client = None
+
+        # Domain router for intent-based tool filtering
+        from bioforge.agent.router import RouterAgent
+        self._router = RouterAgent(registry)
+
+        # Agent memory for cross-session knowledge
+        from bioforge.agent.memory import AgentMemory
+        self._memory = AgentMemory()
 
     # ------------------------------------------------------------------
     # Session management
@@ -143,6 +179,14 @@ class BioForgeAgent:
                 turns_used=0,
             )
 
+        # Acquire session lock to prevent concurrent corruption
+        async with session.lock:
+            return await self._run_agentic_loop(session, prompt)
+
+    async def _run_agentic_loop(self, session: Session, prompt: str) -> AgentResponse:
+        """Run the agentic tool-use loop within a locked session."""
+        session_id = session.id
+
         # 1. Build API-compatible message list from history
         api_messages = self._build_api_messages(session)
 
@@ -150,12 +194,23 @@ class BioForgeAgent:
         session.messages.append(SessionMessage(role="user", content=prompt))
         api_messages.append({"role": "user", "content": prompt})
 
-        # 3. Build system prompt and tools
+        # 3. Build system prompt with memory context
+        memories = self._memory.recall(prompt, top_k=5)
+        memory_context = ""
+        if memories:
+            memory_context = "\n\nRelevant context from prior sessions:\n" + "\n".join(
+                f"- {m}" for m in memories
+            )
         system = BIOFORGE_SYSTEM_PROMPT.format(
             workspace_id=str(session.workspace_id),
             project_id=str(session.project_id),
-        )
-        tools = self._build_tools()
+        ) + memory_context
+
+        # 4. Route intent and select domain-specific tools
+        domain = self._router.classify_intent(prompt)
+        tools = self._router.get_tools_for_domain(domain)
+        if not tools:
+            tools = self._build_tools()  # Fall back to all tools
         tool_calls_log: list[dict] = []
 
         # 4. Agentic loop
@@ -176,7 +231,7 @@ class BioForgeAgent:
                 # Persist intermediate assistant message so future calls
                 # can reconstruct the full Anthropic message history.
                 session.messages.append(
-                    SessionMessage(role="assistant", content=response.content)
+                    SessionMessage(role="assistant", content=_serialize_content_blocks(response.content))
                 )
 
                 # Execute each tool call
@@ -218,7 +273,7 @@ class BioForgeAgent:
 
                 # 5. Persist the assistant response
                 session.messages.append(
-                    SessionMessage(role="assistant", content=response.content)
+                    SessionMessage(role="assistant", content=_serialize_content_blocks(response.content))
                 )
                 session.total_turns += turn + 1
 

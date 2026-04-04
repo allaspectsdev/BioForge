@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from sqlalchemy.exc import OperationalError
 
+from bioforge import __version__
 from bioforge.core.config import Settings, get_settings
 from bioforge.core.database import create_engine, create_session_factory
 from bioforge.core.exceptions import BioForgeError, NotFoundError, ValidationError
@@ -32,7 +33,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="BioForge",
         description="AI-first bioinformatics platform",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
 

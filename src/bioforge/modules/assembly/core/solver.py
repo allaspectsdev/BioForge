@@ -29,6 +29,7 @@ class SolverResult:
     total_time_s: float
     fragments: list[dict] = field(default_factory=list)
     overhangs: list[dict] = field(default_factory=list)
+    simulation: dict = field(default_factory=dict)
 
 
 class AssemblySolver:
@@ -110,6 +111,21 @@ class AssemblySolver:
                 "homopolymer_run": oh.homopolymer_run,
             })
 
+        # Validate assembly via simulation
+        simulation = {}
+        if best_result.passed and len(fragments) > 1:
+            try:
+                from bioforge.modules.assembly.core.simulator import simulate_gibson
+                frag_seqs = [sequence[f["start"]:f["end"]] for f in fragments]
+                sim_result = simulate_gibson(frag_seqs)
+                simulation = {
+                    "success": sim_result.success,
+                    "product_length": sim_result.product_length,
+                    "error": sim_result.error,
+                }
+            except Exception as e:
+                simulation = {"success": False, "error": str(e)}
+
         return SolverResult(
             partition=best_partition,
             constraint_result=best_result,
@@ -119,4 +135,5 @@ class AssemblySolver:
             total_time_s=round(elapsed, 3),
             fragments=fragments,
             overhangs=overhangs,
+            simulation=simulation,
         )

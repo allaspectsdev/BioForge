@@ -5,6 +5,7 @@ WORKDIR /app
 # System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Python dependencies
@@ -20,4 +21,8 @@ CMD ["uvicorn", "bioforge.api.app:create_app", "--factory", "--host", "0.0.0.0",
 # --- Streamlit UI ---
 FROM base AS ui
 EXPOSE 8501
-CMD ["streamlit", "run", "src/bioforge/ui/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["python", "-m", "streamlit", "run", "src/bioforge/ui/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+
+# --- MCP Server ---
+FROM base AS mcp
+CMD ["python", "-m", "bioforge.mcp.server"]

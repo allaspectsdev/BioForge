@@ -218,6 +218,7 @@ class CodonOptimizer:
             ValueError: If protein sequence contains invalid amino acids.
         """
         protein = protein_sequence.upper().replace(" ", "").replace("\n", "")
+        protein = protein.rstrip("*")  # Strip trailing stop codon
 
         # Validate protein sequence
         invalid_chars = set(protein) - AMINO_ACIDS
