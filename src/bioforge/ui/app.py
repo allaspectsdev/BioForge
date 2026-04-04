@@ -61,14 +61,14 @@ def show_home():
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Modules Loaded", "1")
-        st.caption("Assembly")
+        st.metric("Modules", "7")
+        st.caption("Assembly, Evo2, Structure, Alignment, Variants, Experiments, SBOL")
     with col2:
-        st.metric("Constraint Types", "4")
-        st.caption("Length, Quality, Hairpin, Orthogonality")
+        st.metric("Capabilities", "22")
+        st.caption("Gibson, Golden Gate, codon opt, BLAST, variant scoring, ...")
     with col3:
-        st.metric("MCP Tools", "4")
-        st.caption("design, calculate_tm, check, reverse_complement")
+        st.metric("MCP Tools", "12")
+        st.caption("Assembly, Evo2 embeddings, structure prediction, registry search")
 
 
 main()

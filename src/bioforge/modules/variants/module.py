@@ -430,15 +430,15 @@ class VariantModule(BioForgeModule):
         Returns None if Evo2 is not installed.
         """
         try:
-            from bioforge.modules.evo2.client import get_evo2_client
+            from bioforge.modules.evo2.client import create_evo2_client
 
-            client = get_evo2_client()
-            scores = client.score_variants(
+            client = create_evo2_client()
+            scores = await client.score_variants(
                 reference_sequence,
                 [(variant.pos, variant.ref, variant.alt)],
             )
             return round(scores[0], 4) if scores else None
-        except (ImportError, AttributeError, Exception):
+        except Exception:
             logger.debug("Evo2 module not available for variant scoring")
             return None
 

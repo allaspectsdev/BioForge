@@ -173,6 +173,11 @@ class BioForgeAgent:
                 api_messages.append(
                     {"role": "assistant", "content": response.content}
                 )
+                # Persist intermediate assistant message so future calls
+                # can reconstruct the full Anthropic message history.
+                session.messages.append(
+                    SessionMessage(role="assistant", content=response.content)
+                )
 
                 # Execute each tool call
                 tool_results = []
@@ -200,6 +205,10 @@ class BioForgeAgent:
                         )
 
                 api_messages.append({"role": "user", "content": tool_results})
+                # Persist the tool results as a user message
+                session.messages.append(
+                    SessionMessage(role="user", content=tool_results)
+                )
             else:
                 # Final response -- extract text
                 text = ""

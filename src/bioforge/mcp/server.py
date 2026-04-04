@@ -67,10 +67,11 @@ def design_golden_gate(
     using the specified enzyme (BsaI, BpiI, Esp3I, or SapI).
     """
     try:
+        from dataclasses import asdict
         from bioforge.modules.assembly.core.golden_gate.gg_solver import GoldenGateSolver
         solver = GoldenGateSolver(enzyme_name=enzyme, seed=seed)
         result = solver.solve(parts)
-        return result
+        return asdict(result) if hasattr(result, "__dataclass_fields__") else result
     except ImportError:
         return {"error": "Golden Gate module not available"}
     except Exception as e:
@@ -87,10 +88,11 @@ def optimize_codons(
     Returns optimized DNA sequence with Codon Adaptation Index (CAI) score.
     """
     try:
+        from dataclasses import asdict
         from bioforge.modules.assembly.core.codon.optimizer import CodonOptimizer
         opt = CodonOptimizer(organism=organism)
         result = opt.optimize(protein_sequence)
-        return result
+        return asdict(result) if hasattr(result, "__dataclass_fields__") else result
     except ImportError:
         return {"error": "Codon optimization module not available"}
     except Exception as e:
@@ -171,14 +173,16 @@ def embed_sequence(sequence: str) -> dict:
     Returns a vector representation capturing sequence features for
     similarity search and variant effect prediction.
     """
+    import asyncio
+
     try:
-        from bioforge.modules.evo2.client import get_evo2_client
-        client = get_evo2_client()
-        embedding = client.embed(sequence)
+        from bioforge.modules.evo2.client import create_evo2_client
+        client = create_evo2_client()
+        embedding = asyncio.run(client.embed(sequence))
         return {
             "sequence_length": len(sequence),
             "embedding_dim": len(embedding),
-            "embedding": embedding[:10].tolist(),  # Preview first 10 dims
+            "embedding": embedding[:10].tolist(),
             "status": "computed",
         }
     except Exception as e:
@@ -197,10 +201,12 @@ def score_variant(
     Positive scores suggest the variant is neutral or beneficial.
     Negative scores suggest the variant is deleterious.
     """
+    import asyncio
+
     try:
-        from bioforge.modules.evo2.client import get_evo2_client
-        client = get_evo2_client()
-        scores = client.score_variants(sequence, [(position, ref_base, alt_base)])
+        from bioforge.modules.evo2.client import create_evo2_client
+        client = create_evo2_client()
+        scores = asyncio.run(client.score_variants(sequence, [(position, ref_base, alt_base)]))
         score = scores[0]
         interpretation = "beneficial" if score > 0.5 else "neutral" if score > -0.5 else "deleterious"
         return {
@@ -220,10 +226,14 @@ def predict_structure(sequence: str) -> dict:
 
     Returns PDB data and per-residue confidence scores (pLDDT).
     """
+    import asyncio
+
     try:
-        from bioforge.modules.structure.client import get_structure_client
-        client = get_structure_client()
-        result = client.predict_structure(sequence)
+        from bioforge.modules.structure.client import create_structure_client
+        client = create_structure_client()
+        result = asyncio.run(client.predict_structure(sequence))
+        if hasattr(result, "__dict__"):
+            return vars(result)
         return result
     except Exception as e:
         return {"error": str(e)}
@@ -232,9 +242,11 @@ def predict_structure(sequence: str) -> dict:
 @mcp.tool()
 def search_registry(query: str, limit: int = 10) -> dict:
     """Search SynBioHub for standard biological parts (promoters, RBS, terminators)."""
+    import asyncio
+
     try:
-        from bioforge.modules.sbol.registry import search_synbiohub
-        return search_synbiohub(query, limit)
+        from bioforge.modules.sbol.module import search_synbiohub
+        return asyncio.run(search_synbiohub(query, limit))
     except Exception as e:
         return {"error": str(e)}
 

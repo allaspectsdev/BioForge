@@ -85,17 +85,24 @@ async def search_similar(
 
     Returns a ranked list of matches with similarity scores.
     """
-    client = create_evo2_client(mode="auto")
-    embedding_service = EmbeddingService(client)
+    try:
+        client = create_evo2_client(mode="auto")
+        embedding_service = EmbeddingService(client)
 
-    query_embedding = await client.embed(body.query_sequence)
-    hits = await embedding_service.similarity_search(
-        query_embedding,
-        body.project_id,
-        body.top_k,
-        session,
-    )
-    return hits
+        query_embedding = await client.embed(body.query_sequence)
+        hits = await embedding_service.similarity_search(
+            query_embedding,
+            body.project_id,
+            body.top_k,
+            session,
+        )
+        return hits
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail=f"Similarity search unavailable: {e}. Requires pgvector extension and database connection.",
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -71,6 +71,18 @@ def _get_agent(settings: Settings = Depends(get_settings)):
     except ImportError:
         pass
 
+    try:
+        from bioforge.modules.evo2.module import Evo2Module
+        registry.register(Evo2Module())
+    except ImportError:
+        pass
+
+    try:
+        from bioforge.modules.structure.module import StructureModule
+        registry.register(StructureModule())
+    except ImportError:
+        pass
+
     _agent_instance = BioForgeAgent(registry, settings)
     return _agent_instance
 
