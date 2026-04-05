@@ -63,13 +63,13 @@ class Evo2Module(BioForgeModule):
     def info(self) -> ModuleInfo:
         return ModuleInfo(
             name="evo2",
-            version="0.1.0",
+            version="0.2.0",
             description=(
-                "Evo 2 genomic foundation model: embedding, variant effect prediction, "
-                "and sequence generation"
+                "Evo 2 genomic foundation model (1B/7B/20B/40B): embedding, "
+                "variant effect prediction, and sequence generation"
             ),
             author="BioForge",
-            tags=["genomics", "embedding", "variant-effect", "generation", "evo2"],
+            tags=["genomics", "embedding", "variant-effect", "generation", "evo2", "foundation-model"],
         )
 
     def capabilities(self) -> list[ModuleCapability]:

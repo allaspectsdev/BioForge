@@ -176,7 +176,7 @@ class TestModuleRegistration:
     def test_module_info(self, evo2_module: Evo2Module):
         info = evo2_module.info()
         assert info.name == "evo2"
-        assert info.version == "0.1.0"
+        assert info.version == "0.2.0"
 
     def test_module_has_four_capabilities(self, evo2_module: Evo2Module):
         caps = evo2_module.capabilities()

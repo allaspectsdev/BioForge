@@ -7,7 +7,6 @@ import pytest
 from bioforge.modules.structure.client import MockStructureClient, PDBResult
 from bioforge.modules.structure.module import StructureModule
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -90,7 +89,7 @@ class TestStructureModule:
     def test_module_info(self, structure_module: StructureModule):
         info = structure_module.info()
         assert info.name == "structure"
-        assert info.version == "0.1.0"
+        assert info.version == "0.2.0"
 
     def test_module_has_two_capabilities(self, structure_module: StructureModule):
         caps = structure_module.capabilities()

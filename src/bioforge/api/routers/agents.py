@@ -1,6 +1,6 @@
 """Agent API endpoints with multi-turn session support."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -104,7 +104,7 @@ async def create_session(
         session_id=session_id,
         workspace_id=body.workspace_id,
         project_id=body.project_id,
-        created_at=session.created_at if session else datetime.now(timezone.utc),
+        created_at=session.created_at if session else datetime.now(UTC),
     )
 
 

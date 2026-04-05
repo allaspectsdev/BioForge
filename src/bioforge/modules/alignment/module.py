@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from bioforge.modules.alignment.blast_runner import MockBlastRunner
 from bioforge.modules.alignment.schemas import (
@@ -88,18 +87,18 @@ def _needleman_wunsch(
             aligned2.append(seq2[j - 1])
             s = match if seq1[i - 1].upper() == seq2[j - 1].upper() else mismatch
             prev_score = M[i][j] - s
-            if i > 0 and j > 0 and abs(M[i - 1][j - 1] - prev_score) < 1e-6:
+            if abs(M[i - 1][j - 1] - prev_score) < 1e-6:
                 state = "M"
-            elif i > 0 and j > 0 and abs(X[i - 1][j - 1] - prev_score) < 1e-6:
+            elif abs(X[i - 1][j - 1] - prev_score) < 1e-6:
                 state = "X"
             else:
                 state = "Y"
             i -= 1
             j -= 1
-        elif state == "X" and i > 0:
+        elif (state == "X" or (state != "Y" and i > 0 and j == 0)) and i > 0:
             aligned1.append(seq1[i - 1])
             aligned2.append("-")
-            if abs(X[i - 1][j] + gap_extend - X[i][j]) < 1e-6:
+            if i > 1 and abs(X[i - 1][j] + gap_extend - X[i][j]) < 1e-6:
                 state = "X"
             else:
                 state = "M"
@@ -107,7 +106,7 @@ def _needleman_wunsch(
         elif j > 0:
             aligned1.append("-")
             aligned2.append(seq2[j - 1])
-            if abs(Y[i][j - 1] + gap_extend - Y[i][j]) < 1e-6:
+            if j > 1 and abs(Y[i][j - 1] + gap_extend - Y[i][j]) < 1e-6:
                 state = "Y"
             else:
                 state = "M"
@@ -269,10 +268,11 @@ class AlignmentModule(BioForgeModule):
         return result.model_dump()
 
     async def _multiple_align(self, request: dict) -> dict:
-        """Handle multiple sequence alignment (stub).
+        """Progressive multiple sequence alignment using iterative pairwise NW.
 
-        TODO: Integrate MUSCLE or MAFFT for true MSA.
-        Currently returns input sequences as-is with identity metrics.
+        Builds the MSA by aligning sequences one at a time to the growing
+        profile. Not as accurate as MUSCLE/MAFFT for large sets, but produces
+        biologically meaningful alignments for small-to-medium inputs.
         """
         req = AlignmentRequest(**request)
         sequences = req.sequences
@@ -280,26 +280,119 @@ class AlignmentModule(BioForgeModule):
             f"seq{i+1}" for i in range(len(sequences))
         ]
 
-        # Stub: pad sequences to equal length with trailing gaps
-        max_len = max(len(s) for s in sequences)
-        aligned = [
-            AlignedSequence(
-                name=names[i],
-                aligned_sequence=seq + "-" * (max_len - len(seq)),
-                original_length=len(seq),
+        if len(sequences) < 2:
+            return AlignmentResult(
+                aligned_sequences=[
+                    AlignedSequence(name=names[0], aligned_sequence=sequences[0], original_length=len(sequences[0]))
+                ],
+                alignment_length=len(sequences[0]),
+                identity_pct=100.0,
+                gap_count=0,
+                score=0.0,
+                method="single sequence (no alignment needed)",
+            ).model_dump()
+
+        # Progressive alignment: align first two, then add each subsequent seq
+        aligned_seqs = [sequences[0]]
+        aligned_names = [names[0]]
+
+        for i in range(1, len(sequences)):
+            # Use consensus of current alignment as reference
+            consensus = self._make_consensus(aligned_seqs)
+            new_aligned, new_seq_aligned, score = _needleman_wunsch(
+                consensus, sequences[i],
+                match=req.match_score,
+                mismatch=req.mismatch_penalty,
+                gap_open=req.gap_open_penalty,
+                gap_extend=req.gap_extend_penalty,
             )
-            for i, seq in enumerate(sequences)
-        ]
+
+            # Propagate gaps inserted into consensus back into all existing sequences
+            updated_seqs = []
+            for existing_seq in aligned_seqs:
+                updated = self._propagate_gaps(existing_seq, consensus, new_aligned)
+                updated_seqs.append(updated)
+            aligned_seqs = updated_seqs
+            aligned_seqs.append(new_seq_aligned)
+            aligned_names.append(names[i])
+
+        alignment_length = len(aligned_seqs[0]) if aligned_seqs else 0
+
+        # Compute column-wise identity
+        identical_cols = 0
+        for col_idx in range(alignment_length):
+            col = [s[col_idx] for s in aligned_seqs if col_idx < len(s)]
+            if len(set(c for c in col if c != "-")) == 1 and "-" not in col:
+                identical_cols += 1
+
+        identity_pct = round(identical_cols / max(alignment_length, 1) * 100, 1)
+        gap_count = sum(s.count("-") for s in aligned_seqs)
 
         result = AlignmentResult(
-            aligned_sequences=aligned,
-            alignment_length=max_len,
-            identity_pct=0.0,  # Not computed for stub
-            gap_count=sum(max_len - len(s) for s in sequences),
+            aligned_sequences=[
+                AlignedSequence(
+                    name=aligned_names[i],
+                    aligned_sequence=aligned_seqs[i],
+                    original_length=len(sequences[i]),
+                )
+                for i in range(len(aligned_seqs))
+            ],
+            alignment_length=alignment_length,
+            identity_pct=identity_pct,
+            gap_count=gap_count,
             score=0.0,
-            method="stub (sequences padded to equal length, no true alignment)",
+            method="progressive Needleman-Wunsch (pairwise cascading)",
         )
         return result.model_dump()
+
+    @staticmethod
+    def _make_consensus(aligned_seqs: list[str]) -> str:
+        """Build a simple majority-rule consensus from aligned sequences."""
+        if not aligned_seqs:
+            return ""
+        length = max(len(s) for s in aligned_seqs)
+        consensus = []
+        for i in range(length):
+            counts: dict[str, int] = {}
+            for seq in aligned_seqs:
+                if i < len(seq) and seq[i] != "-":
+                    c = seq[i].upper()
+                    counts[c] = counts.get(c, 0) + 1
+            if counts:
+                consensus.append(max(counts, key=counts.get))  # type: ignore[arg-type]
+            else:
+                consensus.append("-")
+        return "".join(consensus)
+
+    @staticmethod
+    def _propagate_gaps(
+        existing_aligned: str,
+        old_consensus: str,
+        new_consensus_aligned: str,
+    ) -> str:
+        """Insert gaps into an existing aligned sequence wherever the consensus gained gaps."""
+        result = []
+        existing_idx = 0
+        old_idx = 0
+        for new_char in new_consensus_aligned:
+            if old_idx < len(old_consensus) and new_char != "-":
+                if existing_idx < len(existing_aligned):
+                    result.append(existing_aligned[existing_idx])
+                else:
+                    result.append("-")
+                existing_idx += 1
+                old_idx += 1
+            elif new_char == "-" and (old_idx >= len(old_consensus) or old_consensus[old_idx] != "-"):
+                # Gap inserted into consensus
+                result.append("-")
+            else:
+                if existing_idx < len(existing_aligned):
+                    result.append(existing_aligned[existing_idx])
+                else:
+                    result.append("-")
+                existing_idx += 1
+                old_idx += 1
+        return "".join(result)
 
     # ------------------------------------------------------------------
     # Pipeline step handlers

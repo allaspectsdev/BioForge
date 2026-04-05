@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import xml.etree.ElementTree as ET
 from typing import Any
 
 import httpx
@@ -34,12 +35,71 @@ SYNBIOHUB_PUBLIC = "https://synbiohub.org"
 def parse_sbol3_document(content: str) -> list[dict]:
     """Parse SBOL3 XML and extract component sequences.
 
-    Uses regex-based extraction for simplicity. A production implementation
-    would use an XML parser (lxml/ElementTree) for robustness.
+    Uses ElementTree XML parser for robust handling of namespaced attributes,
+    nested elements, and real-world SBOL3 documents from SynBioHub/iGEM.
     """
+    # Define SBOL3 namespaces
+    ns = {
+        "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        "sbol": "http://sbols.org/v3#",
+        "prov": "http://www.w3.org/ns/prov#",
+    }
+
     components: list[dict] = []
 
-    # Find each Component block
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        logger.warning("Failed to parse SBOL3 document as XML, falling back to regex")
+        return _parse_sbol3_regex_fallback(content)
+
+    # Find all Component elements (try both namespaced and prefixed)
+    for comp in root.findall("sbol:Component", ns):
+        uri = comp.get(f"{{{ns['rdf']}}}about", "")
+
+        display_id_el = comp.find("sbol:displayId", ns)
+        name_el = comp.find("sbol:name", ns)
+        type_el = comp.find("sbol:type", ns)
+
+        # Extract sequence from nested Sequence element
+        sequence_text = ""
+        encoding = ""
+        seq_el = comp.find(".//sbol:Sequence", ns)
+        if seq_el is not None:
+            elements_el = seq_el.find("sbol:elements", ns)
+            if elements_el is not None and elements_el.text:
+                sequence_text = elements_el.text.strip()
+            encoding_el = seq_el.find("sbol:encoding", ns)
+            if encoding_el is not None:
+                encoding = encoding_el.get(f"{{{ns['rdf']}}}resource", "")
+
+        # Determine sequence type from encoding
+        seq_type = "DNA"
+        if encoding:
+            if "AminoAcid" in encoding or "iupacAminoAcid" in encoding:
+                seq_type = "protein"
+            elif "rna" in encoding.lower():
+                seq_type = "RNA"
+
+        sbol_type = ""
+        if type_el is not None:
+            sbol_type = type_el.get(f"{{{ns['rdf']}}}resource", "")
+
+        components.append({
+            "uri": uri,
+            "name": display_id_el.text if display_id_el is not None and display_id_el.text else "",
+            "label": name_el.text if name_el is not None and name_el.text else "",
+            "sequence": sequence_text,
+            "type": seq_type,
+            "sbol_type": sbol_type,
+        })
+
+    return components
+
+
+def _parse_sbol3_regex_fallback(content: str) -> list[dict]:
+    """Regex fallback for documents that fail XML parsing (e.g. fragments)."""
+    components: list[dict] = []
     comp_pattern = re.compile(
         r'<sbol:Component[^>]*about="([^"]*)"(.*?)</sbol:Component>',
         re.DOTALL,
@@ -47,13 +107,10 @@ def parse_sbol3_document(content: str) -> list[dict]:
     for match in comp_pattern.finditer(content):
         uri = match.group(1)
         block = match.group(2)
-
         name_match = re.search(r"<sbol:displayId>([^<]*)</sbol:displayId>", block)
         label_match = re.search(r"<sbol:name>([^<]*)</sbol:name>", block)
         elements_match = re.search(r"<sbol:elements>([^<]*)</sbol:elements>", block)
-        encoding_match = re.search(
-            r'<sbol:encoding[^>]*resource="([^"]*)"', block
-        )
+        encoding_match = re.search(r'<sbol:encoding[^>]*resource="([^"]*)"', block)
         type_match = re.search(r'<sbol:type[^>]*resource="([^"]*)"', block)
 
         seq_type = "DNA"
@@ -64,17 +121,14 @@ def parse_sbol3_document(content: str) -> list[dict]:
             elif "rna" in enc.lower():
                 seq_type = "RNA"
 
-        components.append(
-            {
-                "uri": uri,
-                "name": name_match.group(1) if name_match else "",
-                "label": label_match.group(1) if label_match else "",
-                "sequence": elements_match.group(1) if elements_match else "",
-                "type": seq_type,
-                "sbol_type": type_match.group(1) if type_match else "",
-            }
-        )
-
+        components.append({
+            "uri": uri,
+            "name": name_match.group(1) if name_match else "",
+            "label": label_match.group(1) if label_match else "",
+            "sequence": elements_match.group(1) if elements_match else "",
+            "type": seq_type,
+            "sbol_type": type_match.group(1) if type_match else "",
+        })
     return components
 
 
@@ -133,14 +187,14 @@ def generate_sbol3_document(
                 f"    <sbol:displayId>{safe_name}</sbol:displayId>",
                 f"    <sbol:name>{seq_name}</sbol:name>",
                 f'    <sbol:type rdf:resource="{sbo_type}"/>',
-                f"    <sbol:hasSequence>",
+                "    <sbol:hasSequence>",
                 f'      <sbol:Sequence rdf:about="{seq_uri}">',
                 f"        <sbol:displayId>{safe_name}_seq</sbol:displayId>",
                 f"        <sbol:elements>{seq_data}</sbol:elements>",
                 f'        <sbol:encoding rdf:resource="{encoding}"/>',
-                f"      </sbol:Sequence>",
-                f"    </sbol:hasSequence>",
-                f"  </sbol:Component>",
+                "      </sbol:Sequence>",
+                "    </sbol:hasSequence>",
+                "  </sbol:Component>",
                 "",
             ]
         )

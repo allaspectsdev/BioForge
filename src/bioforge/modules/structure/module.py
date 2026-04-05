@@ -1,9 +1,8 @@
-"""Structure prediction BioForge module: protein folding via ESMFold / OpenFold3."""
+"""Structure prediction BioForge module: protein folding via Boltz-2 / OpenFold3."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from bioforge.modules.base import (
     BioForgeModule,
@@ -13,7 +12,6 @@ from bioforge.modules.base import (
 )
 from bioforge.modules.structure.client import (
     BaseStructureClient,
-    MockStructureClient,
     create_structure_client,
 )
 from bioforge.modules.structure.schemas import (
@@ -54,10 +52,10 @@ class StructureModule(BioForgeModule):
     def info(self) -> ModuleInfo:
         return ModuleInfo(
             name="structure",
-            version="0.1.0",
-            description="Protein structure prediction via ESMFold API or local OpenFold3",
+            version="0.2.0",
+            description="Protein structure prediction via Boltz-2, OpenFold3, or ESMFold",
             author="BioForge",
-            tags=["protein", "structure", "folding", "esmfold", "openfold"],
+            tags=["protein", "structure", "folding", "boltz", "openfold", "alphafold"],
         )
 
     def capabilities(self) -> list[ModuleCapability]:

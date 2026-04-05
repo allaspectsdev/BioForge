@@ -66,6 +66,20 @@ class AssemblyModule(BioForgeModule):
                 output_ports={"result": "AssemblyResult"},
                 handler=self._design_assembly_step,
             ),
+            ModulePipelineStep(
+                step_type="assembly.golden_gate",
+                description="Design Golden Gate Assembly with Type IIS enzyme overhangs",
+                input_ports={"parts": "list[str]"},
+                output_ports={"result": "dict"},
+                handler=self._design_golden_gate_step,
+            ),
+            ModulePipelineStep(
+                step_type="assembly.codon_optimize",
+                description="Optimize codons for a protein sequence for a target organism",
+                input_ports={"protein_sequence": "str"},
+                output_ports={"optimized_dna": "str", "cai": "float"},
+                handler=self._codon_optimize_step,
+            ),
         ]
 
     def mcp_tools(self) -> list:
@@ -89,6 +103,28 @@ class AssemblyModule(BioForgeModule):
         req = AssemblyRequest(sequence=sequence, **params)
         result = self._run_solver(req)
         return {"result": result.model_dump()}
+
+    async def _design_golden_gate_step(self, inputs: dict, params: dict) -> dict:
+        """Pipeline step handler for Golden Gate Assembly design."""
+        from dataclasses import asdict
+        from bioforge.modules.assembly.core.golden_gate.gg_solver import GoldenGateSolver
+        parts = inputs["parts"]
+        enzyme = params.get("enzyme", "BsaI")
+        solver = GoldenGateSolver(enzyme_name=enzyme)
+        result = solver.solve(parts)
+        return {"result": asdict(result) if hasattr(result, "__dataclass_fields__") else result}
+
+    async def _codon_optimize_step(self, inputs: dict, params: dict) -> dict:
+        """Pipeline step handler for codon optimization."""
+        from bioforge.modules.assembly.core.codon.optimizer import CodonOptimizer
+        protein_sequence = inputs["protein_sequence"]
+        organism = params.get("organism", "ecoli_k12")
+        opt = CodonOptimizer(organism=organism)
+        result = opt.optimize(protein_sequence)
+        return {
+            "optimized_dna": result.optimized_sequence if hasattr(result, "optimized_sequence") else str(result),
+            "cai": result.cai if hasattr(result, "cai") else 0.0,
+        }
 
     def _run_solver(self, req: AssemblyRequest) -> AssemblyResult:
         config = AssemblyConfig(

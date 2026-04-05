@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ class MemoryEntry:
     """A single remembered fact."""
 
     fact: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     source: str = ""  # e.g. "user", "tool_result", "observation"
     keywords: list[str] = field(default_factory=list)
 

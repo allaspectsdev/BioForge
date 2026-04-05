@@ -46,29 +46,61 @@ def show_home():
         and pipeline execution in a single platform.
 
         #### Quick Start
-        - **Assembly Designer** — Design Gibson Assembly fragments with constraint optimization
+        - **Assembly Designer** — Design Gibson & Golden Gate assemblies with constraint optimization
         - **Sequence Viewer** — Import and explore DNA/RNA/protein sequences
         - **Pipeline Builder** — Create and execute bioinformatics pipelines
-        - **AI Agent** — Chat with an AI assistant about your bioinformatics problems
+        - **AI Agent** — Multi-turn AI assistant with tool use across all modules
 
         #### Architecture
-        - Modular plugin system for bioinformatics tools
-        - Claude AI agent with MCP tool integration
-        - Constraint-based optimization (Tm, GC, orthogonality)
+        - 7 modular plugins implementing the BioForgeModule interface
+        - Claude AI agent with domain routing, memory, and streaming
+        - Evo 2 genomic foundation model (1B/7B/20B/40B) for embeddings and variant scoring
+        - Boltz-2 / OpenFold3 protein structure prediction
+        - Constraint-based assembly optimization (simulated annealing)
         - Pipeline DAG execution with Nextflow export
+        - 22 MCP tools for integration with any AI client
         """
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Modules", "7")
-        st.caption("Assembly, Evo2, Structure, Alignment, Variants, Experiments, SBOL")
+        st.caption("Assembly, Evo 2, Structure, Alignment, Variants, Experiments, SBOL")
     with col2:
         st.metric("Capabilities", "22")
         st.caption("Gibson, Golden Gate, codon opt, BLAST, variant scoring, ...")
     with col3:
-        st.metric("MCP Tools", "12")
-        st.caption("Assembly, Evo2 embeddings, structure prediction, registry search")
+        st.metric("MCP Tools", "22")
+        st.caption("Assembly, alignment, variants, structure, SBOL, experiments")
+    with col4:
+        st.metric("Pipeline Steps", "10")
+        st.caption("Assembly, alignment, Evo 2, structure, variants, SBOL export")
+
+    st.divider()
+
+    st.subheader("Foundation Models")
+    fm_col1, fm_col2 = st.columns(2)
+    with fm_col1:
+        st.markdown(
+            """
+            **Evo 2** (Arc Institute)
+            - Genomic foundation model published in *Nature* (March 2026)
+            - 1B / 7B / 20B / 40B parameter variants
+            - 1M base-pair context window
+            - DNA/RNA/protein embeddings, variant scoring, sequence generation
+            - 90% accuracy on BRCA1 pathogenicity prediction
+            """
+        )
+    with fm_col2:
+        st.markdown(
+            """
+            **Boltz-2** (MIT License)
+            - AlphaFold3-level protein structure prediction
+            - Protein-ligand binding affinity (1000x faster than FEP)
+            - Multi-chain complex prediction
+            - Open source, commercially usable
+            """
+        )
 
 
 main()

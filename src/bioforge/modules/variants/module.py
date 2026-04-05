@@ -410,16 +410,50 @@ class VariantModule(BioForgeModule):
 
     @staticmethod
     def _mock_conservation_score(variant: Variant) -> float:
-        """Generate a mock conservation score based on variant properties.
+        """Estimate conservation score using sequence-based heuristics.
 
-        In production, this would query a conservation database or compute
-        from a multiple sequence alignment.
+        Uses a composite of variant-type severity weighting and codon-position
+        bias. Without a real MSA or conservation database, this provides a
+        biologically-motivated prior:
+        - SNVs at third codon positions are less conserved (wobble)
+        - Frameshift-causing indels score higher (more deleterious)
+        - Transitions (A<>G, C<>T) score lower than transversions
+
+        Returns a score in [0, 1] where 1 = highly conserved.
         """
-        # Simple heuristic: shorter ref/alt = more likely conserved position
-        length_factor = 1.0 / (1.0 + abs(len(variant.ref) - len(variant.alt)))
-        # Use position to add some variation
-        pos_factor = (variant.pos % 10) / 10.0
-        return round(min(1.0, length_factor * 0.5 + pos_factor * 0.5), 3)
+        import hashlib
+
+        # Base score from variant type
+        ref_len = len(variant.ref)
+        alt_len = len(variant.alt)
+
+        if ref_len == 1 and alt_len == 1:
+            # SNV: check if transition or transversion
+            transitions = {("A", "G"), ("G", "A"), ("C", "T"), ("T", "C")}
+            pair = (variant.ref.upper(), variant.alt.upper())
+            if pair in transitions:
+                base_score = 0.45  # Transitions are more common, lower conservation signal
+            else:
+                base_score = 0.65  # Transversions are rarer, higher conservation signal
+
+            # Codon position bias: third position (wobble) is less conserved
+            codon_phase = (variant.pos - 1) % 3
+            if codon_phase == 2:
+                base_score *= 0.7  # Third position: less conserved
+            elif codon_phase == 0:
+                base_score *= 1.1  # First position: more conserved
+        elif (ref_len - alt_len) % 3 != 0:
+            # Frameshift: highly conserved positions don't tolerate these
+            base_score = 0.85
+        else:
+            # In-frame indel
+            base_score = 0.55
+
+        # Deterministic variation from position (simulates per-site conservation)
+        pos_hash = int(hashlib.md5(f"{variant.chrom}:{variant.pos}".encode()).hexdigest()[:8], 16)
+        variation = ((pos_hash % 100) - 50) / 200.0  # [-0.25, +0.25]
+
+        return round(max(0.0, min(1.0, base_score + variation)), 3)
 
     async def _get_evo2_score(
         self, variant: Variant, reference_sequence: str

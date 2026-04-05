@@ -2,11 +2,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
-COMPLEMENT = str.maketrans("ATCG", "TAGC")
+COMPLEMENT = str.maketrans("ATCGatcgNn", "TAGCtagcNn")
 
 
 def reverse_complement(seq: str) -> str:
-    return seq.upper().translate(COMPLEMENT)[::-1]
+    return seq.translate(COMPLEMENT)[::-1]
 
 
 def gc_content(seq: str) -> float:

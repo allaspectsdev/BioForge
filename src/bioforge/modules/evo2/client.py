@@ -51,6 +51,14 @@ EMBEDDING_DIM = 1536
 TOGETHER_EVO2_MODEL = "togethercomputer/evo-2-7b"
 VALID_BASES = set("ATCGN")
 
+# Available Evo 2 model sizes (Arc Institute, published in Nature March 2026)
+EVO2_MODELS = {
+    "evo2_1b": {"params": "1B", "context": "8K bp", "description": "Smallest, fastest"},
+    "evo2_7b": {"params": "7B", "context": "1M bp", "description": "Good balance of speed and quality"},
+    "evo2_20b": {"params": "20B", "context": "1M bp", "description": "40B-level quality at 2x speed (recommended)"},
+    "evo2_40b": {"params": "40B", "context": "1M bp", "description": "Flagship, highest quality, requires Hopper GPU"},
+}
+
 
 # ---------------------------------------------------------------------------
 # Abstract base
@@ -233,14 +241,19 @@ class TogetherEvo2Client(BaseEvo2Client):
         sequence: str,
         mutations: list[tuple[int, str, str]],
     ) -> list[float]:
-        """Score variants by running the reference and each mutant through the API."""
+        """Score variants using embedding-space distance as a proxy.
+
+        Without direct log-likelihood access via the embedding API, this
+        measures cosine distance between reference and mutant embeddings.
+        Larger negative values indicate the variant causes a bigger shift
+        in the model's learned representation. This is a proxy metric —
+        not equivalent to true log-likelihood ratios from the full model.
+        """
         ref_embedding = await self.embed(sequence)
         scores: list[float] = []
         for pos, _ref_base, alt_base in mutations:
             mutant = sequence[:pos] + alt_base + sequence[pos + 1 :]
             mut_embedding = await self.embed(mutant)
-            # Cosine distance as a proxy for effect magnitude when log-likelihood
-            # scoring is not directly available via the embedding endpoint.
             cos_sim = float(
                 np.dot(ref_embedding, mut_embedding)
                 / (np.linalg.norm(ref_embedding) * np.linalg.norm(mut_embedding) + 1e-9)

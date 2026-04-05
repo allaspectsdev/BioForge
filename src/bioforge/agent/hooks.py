@@ -1,7 +1,6 @@
 """Agent hooks for audit logging, safety, and cost tracking."""
 
 import logging
-import time
 from typing import Any
 
 logger = logging.getLogger(__name__)

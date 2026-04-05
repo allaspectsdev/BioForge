@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -50,7 +50,7 @@ class SessionMessage:
 
     role: str  # "user" | "assistant"
     content: Any  # str or list of content blocks
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -61,7 +61,7 @@ class Session:
     workspace_id: UUID
     project_id: UUID
     messages: list[SessionMessage] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     total_turns: int = 0
     status: str = "active"
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -230,8 +230,9 @@ class BioForgeAgent:
                 )
                 # Persist intermediate assistant message so future calls
                 # can reconstruct the full Anthropic message history.
+                serialized = _serialize_content_blocks(response.content)
                 session.messages.append(
-                    SessionMessage(role="assistant", content=_serialize_content_blocks(response.content))
+                    SessionMessage(role="assistant", content=serialized)
                 )
 
                 # Execute each tool call

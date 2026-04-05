@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +143,9 @@ async def stream_agent_response(
                     if hasattr(block, "text"):
                         text += block.text
 
+                from bioforge.agent.client import _serialize_content_blocks
                 session.messages.append(
-                    SessionMessage(role="assistant", content=response.content)
+                    SessionMessage(role="assistant", content=_serialize_content_blocks(response.content))
                 )
                 session.total_turns += turn + 1
 

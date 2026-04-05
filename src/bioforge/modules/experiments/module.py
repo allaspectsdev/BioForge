@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, UTC
 from typing import Any
 from uuid import uuid4
 
@@ -190,7 +190,7 @@ class ExperimentModule(BioForgeModule):
             "protocol": protocol,
             "parameters": parameters,
             "status": "planned",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "steps_completed": [],
         }
 

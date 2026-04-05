@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bioforge"
-version = "0.2.0"
+version = "0.3.0"
 description = "AI-first bioinformatics platform for pipeline design, DNA assembly, and sequence intelligence"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -22,6 +22,7 @@ dependencies = [
     "alembic>=1.14",
     "aioboto3>=13",
     "httpx>=0.27",
+    "pgvector>=0.3",
     # Bioinformatics
     "biopython>=1.84",
     "primer3-py>=2.0",
@@ -45,12 +46,14 @@ dev = [
     "aiosqlite>=0.20",
 ]
 gpu = [
-    "evo2>=0.2",
+    "evo2>=0.5",
     "together>=1.0",
+    "boltz>=1.0",
 ]
 all = [
-    "pgvector>=0.3",
+    "bioforge[gpu]",
     "redis[hiredis]>=5.0",
+    "pydna>=6",
 ]
 
 [project.entry-points."bioforge.modules"]

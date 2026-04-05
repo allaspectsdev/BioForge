@@ -1,7 +1,13 @@
-"""Structure prediction client with dual backends: ESMFold API and local OpenFold3.
+"""Structure prediction client with multiple backends.
+
+Supported backends:
+  - Boltz-2: MIT-licensed, structure + binding affinity (recommended)
+  - OpenFold3: Apache 2.0, AlphaFold3-equivalent
+  - ESMFold: DEPRECATED (API shut down 2024, kept for local-only use)
+  - Mock: deterministic, for testing
 
 Provides a unified interface for protein structure prediction regardless of
-whether an external API or a local model is used.
+which backend is used.
 """
 
 from __future__ import annotations
@@ -27,6 +33,14 @@ try:
 except ImportError:
     openfold = None  # type: ignore[assignment]
 
+_HAS_BOLTZ = False
+try:
+    import boltz  # type: ignore[import-untyped]
+
+    _HAS_BOLTZ = True
+except ImportError:
+    boltz = None  # type: ignore[assignment]
+
 _HAS_HTTPX = False
 try:
     import httpx
@@ -39,6 +53,7 @@ except ImportError:
 # Data containers
 # ---------------------------------------------------------------------------
 
+# ESMFold API was shut down in 2024 — kept only for reference / local deployments
 ESMFOLD_URL = "https://api.esmatlas.com/foldSequence/v1/pdb/"
 
 
@@ -62,45 +77,92 @@ class BaseStructureClient(ABC):
 
     @abstractmethod
     async def predict_structure(self, sequence: str) -> PDBResult:
-        """Predict the 3-D structure of a single protein chain.
-
-        Parameters
-        ----------
-        sequence : str
-            Amino-acid sequence in one-letter code.
-
-        Returns
-        -------
-        PDBResult
-        """
+        """Predict the 3-D structure of a single protein chain."""
         ...
 
     @abstractmethod
     async def predict_complex(self, sequences: list[str]) -> PDBResult:
-        """Predict the structure of a multi-chain complex.
-
-        Parameters
-        ----------
-        sequences : list[str]
-            One amino-acid sequence per chain.
-
-        Returns
-        -------
-        PDBResult
-        """
+        """Predict the structure of a multi-chain complex."""
         ...
 
 
 # ---------------------------------------------------------------------------
-# ESMFold API backend
+# Boltz-2 backend (recommended — MIT licensed, structure + binding affinity)
+# ---------------------------------------------------------------------------
+
+
+class BoltzClient(BaseStructureClient):
+    """Structure prediction via the Boltz-2 package.
+
+    Boltz-2 is MIT-licensed and provides:
+    - AlphaFold3-level accuracy for protein structure prediction
+    - Protein-ligand binding affinity prediction
+    - Multi-chain complex prediction
+    - 1000x faster than FEP for binding affinity
+
+    Requires: pip install boltz
+    """
+
+    def __init__(self, device: str = "cuda") -> None:
+        if not _HAS_BOLTZ:
+            raise ImportError(
+                "The 'boltz' package is required for Boltz-2 structure prediction. "
+                "Install with: pip install boltz"
+            )
+        self._device = device
+        self._model: Any = None
+
+    def _ensure_model(self) -> Any:
+        if self._model is None:
+            logger.info("Loading Boltz-2 model on %s ...", self._device)
+            self._model = boltz.Boltz2.load(device=self._device)
+            logger.info("Boltz-2 model loaded.")
+        return self._model
+
+    async def predict_structure(self, sequence: str) -> PDBResult:
+        """Predict structure using Boltz-2."""
+        model = self._ensure_model()
+        prediction = model.predict(sequence)
+
+        pdb_string: str = prediction.to_pdb()
+        plddt_scores: list[float] = prediction.confidence.tolist()
+        mean_plddt = sum(plddt_scores) / len(plddt_scores) if plddt_scores else 0.0
+
+        return PDBResult(
+            pdb_string=pdb_string,
+            plddt_scores=plddt_scores,
+            mean_plddt=round(mean_plddt, 2),
+            num_residues=len(sequence),
+        )
+
+    async def predict_complex(self, sequences: list[str]) -> PDBResult:
+        """Predict multi-chain complex using Boltz-2."""
+        model = self._ensure_model()
+        prediction = model.predict_complex(sequences)
+
+        pdb_string: str = prediction.to_pdb()
+        plddt_scores: list[float] = prediction.confidence.tolist()
+        mean_plddt = sum(plddt_scores) / len(plddt_scores) if plddt_scores else 0.0
+
+        return PDBResult(
+            pdb_string=pdb_string,
+            plddt_scores=plddt_scores,
+            mean_plddt=round(mean_plddt, 2),
+            num_residues=sum(len(s) for s in sequences),
+        )
+
+
+# ---------------------------------------------------------------------------
+# ESMFold API backend (DEPRECATED — API shut down 2024)
 # ---------------------------------------------------------------------------
 
 
 class ESMFoldClient(BaseStructureClient):
     """Call the ESM Metagenomic Atlas API for structure prediction.
 
-    The public API endpoint accepts a POST with the amino-acid sequence and
-    returns a PDB-format string.
+    DEPRECATED: The public ESMFold API (api.esmatlas.com) was shut down in 2024.
+    This client is kept for local ESMFold deployments only. Do not use with
+    the default URL in production.
     """
 
     def __init__(
@@ -126,28 +188,20 @@ class ESMFoldClient(BaseStructureClient):
             resp.raise_for_status()
 
         pdb_string = resp.text
-
-        # Parse pLDDT from B-factor column of ATOM records
         plddt_scores = self._parse_plddt(pdb_string)
         mean_plddt = sum(plddt_scores) / len(plddt_scores) if plddt_scores else 0.0
-        num_residues = len(sequence)
 
         return PDBResult(
             pdb_string=pdb_string,
             plddt_scores=plddt_scores,
             mean_plddt=round(mean_plddt, 2),
-            num_residues=num_residues,
+            num_residues=len(sequence),
         )
 
     async def predict_complex(self, sequences: list[str]) -> PDBResult:
-        """Predict a complex by submitting chains joined with ':' separator.
-
-        ESMFold's API supports multi-chain input when chains are separated by
-        a colon character in the posted sequence.
-        """
+        """Predict a complex by submitting chains joined with ':' separator."""
         joined = ":".join(sequences)
         result = await self.predict_structure(joined)
-        # Adjust num_residues to the true total (without separator colons)
         result.num_residues = sum(len(s) for s in sequences)
         return result
 
@@ -300,12 +354,11 @@ class MockStructureClient(BaseStructureClient):
         for idx, seq in enumerate(sequences):
             chain_id = chain_labels[idx % len(chain_labels)]
             pdb_part, plddt_scores = self._make_pdb(seq, chain_id=chain_id, res_offset=res_offset)
-            # Remove trailing END from intermediate chains
             for line in pdb_part.splitlines():
                 if line != "END":
                     all_lines.append(line)
             all_plddt.extend(plddt_scores)
-            all_lines.append(f"TER")
+            all_lines.append("TER")
             res_offset += len(seq)
 
         all_lines.append("END")
@@ -337,18 +390,22 @@ def create_structure_client(
     Parameters
     ----------
     mode : str
-        One of ``"esmfold"``, ``"openfold"``, ``"mock"``, or ``"auto"`` (default).
-        In *auto* mode the factory tries ESMFold API first (if httpx is
-        available), then local OpenFold, and finally the mock client.
+        One of ``"boltz"``, ``"openfold"``, ``"esmfold"``, ``"mock"``, or
+        ``"auto"`` (default). In *auto* mode the factory tries Boltz-2 first,
+        then OpenFold3, and finally the mock client. ESMFold is skipped in
+        auto mode since the public API was shut down.
     device : str
-        PyTorch device for OpenFold.
+        PyTorch device for local backends.
     esmfold_url : str
-        Override URL for the ESMFold API.
+        Override URL for ESMFold API (for local deployments only).
     timeout : float
         HTTP timeout in seconds.
     """
     if mode == "mock":
         return MockStructureClient()
+
+    if mode == "boltz":
+        return BoltzClient(device=device)
 
     if mode == "esmfold":
         return ESMFoldClient(url=esmfold_url, timeout=timeout)
@@ -356,12 +413,12 @@ def create_structure_client(
     if mode == "openfold":
         return OpenFoldClient(device=device)
 
-    # auto
-    if _HAS_HTTPX:
+    # auto: try Boltz-2 first (MIT, best accuracy), then OpenFold3, then mock
+    if _HAS_BOLTZ:
         try:
-            return ESMFoldClient(url=esmfold_url, timeout=timeout)
+            return BoltzClient(device=device)
         except Exception:
-            logger.warning("ESMFold client creation failed, trying OpenFold.")
+            logger.warning("Boltz-2 client creation failed, trying OpenFold.")
 
     if _HAS_OPENFOLD:
         try:

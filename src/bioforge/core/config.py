@@ -1,4 +1,3 @@
-from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -14,11 +13,19 @@ class Settings(BaseSettings):
     s3_secret_key: str = "minioadmin"
     s3_bucket: str = "bioforge-data"
 
-    # AI
+    # AI / Claude
     anthropic_api_key: str = ""
-    default_model: str = "claude-sonnet-4-20250514"
+    default_model: str = "claude-sonnet-4-6"
     agent_max_turns: int = 25
     agent_max_budget_usd: float = 1.0
+
+    # Evo 2 configuration
+    evo2_mode: str = "auto"  # auto, local, api, mock
+    evo2_model: str = "evo2_7b"  # evo2_1b, evo2_7b, evo2_20b, evo2_40b
+    together_api_key: str = ""
+
+    # Structure prediction
+    structure_mode: str = "auto"  # auto, boltz, openfold, esmfold, mock
 
     # Platform
     debug: bool = False

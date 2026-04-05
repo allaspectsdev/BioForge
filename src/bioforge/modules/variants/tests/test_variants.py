@@ -4,7 +4,6 @@ import asyncio
 
 from bioforge.modules.variants import VariantModule
 
-
 # A minimal reference sequence (200 bp) for annotation tests.
 # CDS feature covers positions 11-90 (1-based) on the + strand.
 _REFERENCE = (

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
 
 from bioforge.modules.base import ModuleCapability
 from bioforge.modules.registry import ModuleRegistry
@@ -27,13 +26,19 @@ DOMAIN_CAPABILITY_MAP: dict[str, list[str]] = {
         "import_sbol",
         "export_sbol",
         "search_registry",
+        "embed_sequence",
+        "generate_sequence",
     ],
     "pipeline": [],
-    "structure": [],
+    "structure": [
+        "structure.predict",
+        "structure.predict_complex",
+    ],
     "variant": [
         "annotate_variants",
         "predict_effects",
         "load_vcf",
+        "score_variants",
     ],
     "experiment": [
         "create_experiment",
@@ -62,6 +67,8 @@ class RouterAgent:
             "assembly",
             "clone",
             "cloning",
+            "synthesis",
+            "synthesize",
         ],
         "sequence": [
             "sequence",
@@ -73,6 +80,11 @@ class RouterAgent:
             "import",
             "fasta",
             "genbank",
+            "embed",
+            "embedding",
+            "generate",
+            "evo2",
+            "evo 2",
         ],
         "pipeline": [
             "pipeline",
@@ -89,9 +101,13 @@ class RouterAgent:
             "protein",
             "pdb",
             "alphafold",
+            "boltz",
+            "openfold",
             "plddt",
             "3d",
             "tertiary",
+            "binding",
+            "complex",
         ],
         "variant": [
             "variant",
@@ -102,6 +118,8 @@ class RouterAgent:
             "vcf",
             "mutant",
             "substitution",
+            "pathogenic",
+            "brca",
         ],
         "experiment": [
             "experiment",
@@ -111,6 +129,7 @@ class RouterAgent:
             "idt",
             "plate",
             "colony pcr",
+            "sbol",
         ],
     }
 
