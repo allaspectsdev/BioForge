@@ -14,6 +14,7 @@ from bioforge.modules.base import (
     ModuleCapability,
     ModuleInfo,
     ModulePipelineStep,
+    ValidationResult,
 )
 from bioforge.modules.sbol.schemas import (
     RegistryPart,
@@ -338,6 +339,39 @@ class SBOLModule(BioForgeModule):
 
     def mcp_tools(self) -> list:
         return [self._import_sbol, self._export_sbol, self._search_registry]
+
+    async def validate(self, capability_name: str, result: dict) -> ValidationResult:
+        """Validate SBOL outputs — check document structure and sequence integrity."""
+        checks = []
+        warnings = []
+        errors = []
+
+        if capability_name == "import_sbol":
+            components = result.get("components", [])
+            checks.append(f"component_count={len(components)}")
+            for comp in components:
+                if isinstance(comp, dict):
+                    seq = comp.get("sequence", "")
+                    name = comp.get("name", "unnamed")
+                    if not seq:
+                        warnings.append(f"Component '{name}' has no sequence data")
+            checks.append("sequence_presence")
+
+        elif capability_name == "export_sbol":
+            doc = result.get("sbol3_document", "")
+            checks.append(f"document_length={len(doc)}")
+            if not doc:
+                errors.append("Empty SBOL3 document generated")
+            elif "<rdf:RDF" not in doc:
+                errors.append("Output is not valid RDF/XML")
+            checks.append("rdf_xml_structure")
+
+        return ValidationResult(
+            valid=len(errors) == 0,
+            checks_performed=checks,
+            warnings=warnings,
+            errors=errors,
+        )
 
     # ------------------------------------------------------------------
     # Capability handlers

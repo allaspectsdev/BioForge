@@ -8,6 +8,23 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
+# Shared provenance schema
+# ---------------------------------------------------------------------------
+
+
+class DataProvenanceSchema(BaseModel):
+    """Serializable provenance metadata for any module output."""
+
+    source: str = Field(description="Tool/library/model that produced the result")
+    method: str = Field(description="Algorithm or approach used")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence level (0-1)")
+    confidence_notes: str = Field(default="", description="Explanation of confidence level")
+    reference: str = Field(default="", description="Paper DOI or URL for the method")
+    reference_data: str = Field(default="", description="Reference dataset used")
+    warnings: list[str] = Field(default_factory=list, description="Low-confidence regime flags")
+
+
+# ---------------------------------------------------------------------------
 # Embedding
 # ---------------------------------------------------------------------------
 
@@ -28,6 +45,14 @@ class EmbedResult(BaseModel):
     sequence_id: UUID | None = None
     embedding: list[float] = Field(..., description="1536-dimensional embedding vector")
     dimension: int = Field(default=1536, description="Dimensionality of the embedding")
+    provenance: DataProvenanceSchema = Field(
+        default_factory=lambda: DataProvenanceSchema(
+            source="Evo 2 foundation model",
+            method="transformer hidden-state mean pooling",
+            reference="doi:10.1126/science.ado9336",
+            reference_data="Evo 2 pre-training corpus (OpenGenome2)",
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +90,16 @@ class VariantScore(BaseModel):
         ...,
         description="One of: deleterious, neutral, beneficial",
     )
+    confidence: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Prediction confidence (0-1). Lower near thresholds or extreme GC.",
+    )
+    confidence_flags: list[str] = Field(
+        default_factory=list,
+        description="Reasons for reduced confidence (near_threshold, extreme_gc, etc.)",
+    )
 
 
 class VariantScanResult(BaseModel):
@@ -75,6 +110,15 @@ class VariantScanResult(BaseModel):
     region_end: int
     num_variants_scored: int
     variants: list[VariantScore] = Field(default_factory=list)
+    provenance: DataProvenanceSchema = Field(
+        default_factory=lambda: DataProvenanceSchema(
+            source="Evo 2 foundation model",
+            method="delta log-likelihood scoring",
+            reference="doi:10.1126/science.ado9336",  # Evo 2 paper
+            reference_data="Evo 2 pre-training corpus (OpenGenome2)",
+        ),
+        description="Provenance metadata for this variant scan",
+    )
 
 
 # ---------------------------------------------------------------------------

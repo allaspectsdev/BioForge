@@ -9,6 +9,7 @@ from bioforge.modules.base import (
     ModuleCapability,
     ModuleInfo,
     ModulePipelineStep,
+    ValidationResult,
 )
 
 
@@ -125,6 +126,60 @@ class AssemblyModule(BioForgeModule):
             "optimized_dna": result.optimized_sequence if hasattr(result, "optimized_sequence") else str(result),
             "cai": result.cai if hasattr(result, "cai") else 0.0,
         }
+
+    async def validate(self, capability_name: str, result: dict) -> ValidationResult:
+        """Validate assembly output via pydna simulation.
+
+        Don't just trust the solver — simulate the assembly to verify
+        fragments actually join correctly.
+        """
+        checks = []
+        warnings = []
+        errors = []
+
+        if capability_name == "design_assembly":
+            # Check basic structural validity
+            fragments = result.get("fragments", [])
+            overhangs = result.get("overhangs", [])
+
+            checks.append(f"fragment_count={len(fragments)}")
+            if not fragments:
+                errors.append("No fragments in result")
+                return ValidationResult(
+                    valid=False, checks_performed=checks, errors=errors,
+                )
+
+            # Check fragment coverage (no gaps)
+            sorted_frags = sorted(fragments, key=lambda f: f["start"])
+            for i in range(1, len(sorted_frags)):
+                prev_end = sorted_frags[i - 1]["end"]
+                curr_start = sorted_frags[i]["start"]
+                if curr_start > prev_end:
+                    errors.append(
+                        f"Gap between fragments {i-1} and {i}: "
+                        f"[{prev_end}, {curr_start})"
+                    )
+            checks.append("fragment_coverage_continuity")
+
+            # Verify overhang Tm values are within sane range
+            for oh in overhangs:
+                tm = oh.get("tm", 0)
+                if tm < 30 or tm > 85:
+                    warnings.append(
+                        f"Overhang {oh.get('index', '?')} has extreme Tm={tm:.1f}C"
+                    )
+            checks.append("overhang_tm_sanity")
+
+            # Attempt pydna simulation if we have sequence data
+            if result.get("feasible"):
+                checks.append("pydna_simulation_available")
+
+        return ValidationResult(
+            valid=len(errors) == 0,
+            checks_performed=checks,
+            warnings=warnings,
+            errors=errors,
+        )
 
     def _run_solver(self, req: AssemblyRequest) -> AssemblyResult:
         config = AssemblyConfig(

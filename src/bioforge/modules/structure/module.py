@@ -9,6 +9,7 @@ from bioforge.modules.base import (
     ModuleCapability,
     ModuleInfo,
     ModulePipelineStep,
+    ValidationResult,
 )
 from bioforge.modules.structure.client import (
     BaseStructureClient,
@@ -93,6 +94,50 @@ class StructureModule(BioForgeModule):
             self._mcp_predict_structure,
             self._mcp_predict_complex,
         ]
+
+    async def validate(self, capability_name: str, result: dict) -> ValidationResult:
+        """Validate structure predictions — check pLDDT confidence."""
+        checks = []
+        warnings = []
+        errors = []
+
+        if capability_name in ("structure.predict", "structure.predict_complex"):
+            mean_plddt = result.get("mean_plddt", 0)
+            plddt_scores = result.get("plddt_scores", [])
+            num_residues = result.get("num_residues", 0)
+
+            checks.append(f"num_residues={num_residues}")
+            checks.append(f"mean_plddt={mean_plddt:.1f}")
+
+            if mean_plddt < 50:
+                warnings.append(
+                    f"Low mean pLDDT ({mean_plddt:.1f}) — structure prediction is unreliable"
+                )
+            if mean_plddt < 30:
+                errors.append(
+                    f"Very low mean pLDDT ({mean_plddt:.1f}) — prediction likely meaningless"
+                )
+
+            # Flag regions with very low per-residue confidence
+            if plddt_scores:
+                low_conf_residues = sum(1 for s in plddt_scores if s < 50)
+                if low_conf_residues > len(plddt_scores) * 0.5:
+                    warnings.append(
+                        f"{low_conf_residues}/{len(plddt_scores)} residues have pLDDT < 50"
+                    )
+            checks.append("plddt_confidence_audit")
+
+            pdb = result.get("pdb_string", "")
+            if not pdb or len(pdb) < 10:
+                errors.append("Empty or trivial PDB output")
+            checks.append("pdb_non_empty")
+
+        return ValidationResult(
+            valid=len(errors) == 0,
+            checks_performed=checks,
+            warnings=warnings,
+            errors=errors,
+        )
 
     # ------------------------------------------------------------------
     # Capability handlers

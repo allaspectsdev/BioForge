@@ -17,6 +17,7 @@ from bioforge.modules.base import (
     ModuleCapability,
     ModuleInfo,
     ModulePipelineStep,
+    ValidationResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -196,6 +197,49 @@ class AlignmentModule(BioForgeModule):
 
     def mcp_tools(self) -> list:
         return [self._blast_search, self._pairwise_align, self._multiple_align]
+
+    async def validate(self, capability_name: str, result: dict) -> ValidationResult:
+        """Validate alignment outputs — check for degenerate alignments."""
+        checks = []
+        warnings = []
+        errors = []
+
+        if capability_name in ("pairwise_align", "multiple_align"):
+            aligned = result.get("aligned_sequences", [])
+            alignment_length = result.get("alignment_length", 0)
+
+            checks.append(f"num_sequences={len(aligned)}")
+            checks.append(f"alignment_length={alignment_length}")
+
+            if alignment_length == 0:
+                errors.append("Zero-length alignment")
+
+            # Check for excessive gaps (> 50% of alignment)
+            gap_count = result.get("gap_count", 0)
+            total_chars = alignment_length * max(len(aligned), 1)
+            if total_chars > 0 and gap_count / total_chars > 0.5:
+                warnings.append(
+                    f"Alignment is >50% gaps ({gap_count}/{total_chars}) — "
+                    "sequences may not be homologous"
+                )
+            checks.append("gap_ratio_sanity")
+
+            # Check aligned sequences have equal length
+            lengths = {len(s.get("aligned_sequence", "")) for s in aligned if isinstance(s, dict)}
+            if len(lengths) > 1:
+                errors.append(f"Aligned sequences have unequal lengths: {lengths}")
+            checks.append("equal_length_check")
+
+        elif capability_name == "blast_search":
+            hits = result.get("hits", [])
+            checks.append(f"hit_count={len(hits)}")
+
+        return ValidationResult(
+            valid=len(errors) == 0,
+            checks_performed=checks,
+            warnings=warnings,
+            errors=errors,
+        )
 
     # ------------------------------------------------------------------
     # Capability handlers

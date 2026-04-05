@@ -10,6 +10,7 @@ from bioforge.modules.base import (
     ModuleCapability,
     ModuleInfo,
     ModulePipelineStep,
+    ValidationResult,
 )
 from bioforge.modules.evo2.client import BaseEvo2Client, MockEvo2Client, create_evo2_client
 from bioforge.modules.evo2.embeddings import EmbeddingService
@@ -130,6 +131,46 @@ class Evo2Module(BioForgeModule):
             self._mcp_score_variants,
             self._mcp_generate_sequence,
         ]
+
+    async def validate(self, capability_name: str, result: dict) -> ValidationResult:
+        """Validate Evo2 outputs — flag low-confidence predictions."""
+        checks = []
+        warnings = []
+        errors = []
+
+        if capability_name == "score_variants":
+            variants = result.get("variants", [])
+            checks.append(f"variant_count={len(variants)}")
+
+            low_conf_count = sum(
+                1 for v in variants
+                if isinstance(v, dict) and v.get("confidence", 1.0) < 0.5
+            )
+            if low_conf_count > 0:
+                pct = round(low_conf_count / max(len(variants), 1) * 100)
+                warnings.append(
+                    f"{low_conf_count} variants ({pct}%) have confidence < 0.5 — "
+                    "interpret with caution (short context, near threshold, or extreme GC)"
+                )
+            checks.append("confidence_regime_audit")
+
+        elif capability_name == "embed_sequence":
+            embedding = result.get("embedding", [])
+            dim = result.get("dimension", 0)
+            checks.append(f"embedding_dimension={dim}")
+            if dim == 0 or not embedding:
+                errors.append("Empty embedding returned")
+            # Check for degenerate embeddings (all zeros)
+            if embedding and all(v == 0.0 for v in embedding[:10]):
+                warnings.append("Embedding appears degenerate (leading zeros)")
+            checks.append("embedding_non_degenerate")
+
+        return ValidationResult(
+            valid=len(errors) == 0,
+            checks_performed=checks,
+            warnings=warnings,
+            errors=errors,
+        )
 
     # ------------------------------------------------------------------
     # Capability handlers (invoked via ModuleCapability.handler)

@@ -10,6 +10,7 @@ from bioforge.modules.base import (
     ModuleCapability,
     ModuleInfo,
     ModulePipelineStep,
+    ValidationResult,
 )
 from bioforge.modules.variants.schemas import (
     AnnotateVariantsRequest,
@@ -136,6 +137,49 @@ class VariantModule(BioForgeModule):
 
     def mcp_tools(self) -> list:
         return [self._annotate_variants, self._predict_effects, self._load_vcf]
+
+    async def validate(self, capability_name: str, result: dict) -> ValidationResult:
+        """Validate variant outputs — cross-check annotations for consistency."""
+        checks = []
+        warnings = []
+        errors = []
+
+        if capability_name == "annotate_variants":
+            annotations = result.get("annotations", [])
+            checks.append(f"annotation_count={len(annotations)}")
+
+            for ann in annotations:
+                if isinstance(ann, dict):
+                    effect = ann.get("effect", "")
+                    impact = ann.get("impact", "")
+                    # Cross-check: high-impact should be frameshift/nonsense
+                    if impact == "high" and effect not in ("frameshift", "nonsense", "splice"):
+                        warnings.append(
+                            f"Variant at pos {ann.get('variant', {}).get('pos', '?')} "
+                            f"has high impact but effect={effect}"
+                        )
+            checks.append("impact_effect_consistency")
+
+        elif capability_name == "predict_effects":
+            effects = result.get("effects", [])
+            checks.append(f"effect_count={len(effects)}")
+
+            low_conf = sum(
+                1 for e in effects
+                if isinstance(e, dict) and e.get("confidence", 0) < 0.4
+            )
+            if low_conf > 0:
+                warnings.append(
+                    f"{low_conf}/{len(effects)} predictions have confidence < 0.4"
+                )
+            checks.append("prediction_confidence_audit")
+
+        return ValidationResult(
+            valid=len(errors) == 0,
+            checks_performed=checks,
+            warnings=warnings,
+            errors=errors,
+        )
 
     # ------------------------------------------------------------------
     # Capability handlers

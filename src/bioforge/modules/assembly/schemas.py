@@ -1,4 +1,17 @@
 from pydantic import BaseModel, Field
+from typing import Any
+
+
+class DataProvenanceSchema(BaseModel):
+    """Serializable provenance metadata for any module output."""
+
+    source: str = Field(description="Tool/library/model that produced the result")
+    method: str = Field(description="Algorithm or approach used")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence level (0-1)")
+    confidence_notes: str = Field(default="", description="Explanation of confidence level")
+    reference: str = Field(default="", description="Paper DOI or URL for the method")
+    reference_data: str = Field(default="", description="Reference dataset used")
+    warnings: list[str] = Field(default_factory=list, description="Low-confidence regime flags")
 
 
 class AssemblyConstraints(BaseModel):
@@ -47,3 +60,12 @@ class AssemblyResult(BaseModel):
     restarts_used: int
     total_time_s: float
     violations: list[dict] = Field(default_factory=list)
+    provenance: DataProvenanceSchema = Field(
+        default_factory=lambda: DataProvenanceSchema(
+            source="BioForge assembly solver + primer3-py",
+            method="constraint-based stochastic optimization with thermodynamic scoring",
+            reference="doi:10.1093/nar/gks596",  # primer3 paper
+            reference_data="SantaLucia unified nearest-neighbor parameters",
+        ),
+        description="Provenance metadata for this assembly result",
+    )

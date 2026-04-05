@@ -84,11 +84,11 @@ class TestExperimentModule:
 
         assert info.name == "experiments"
 
-    def test_has_3_capabilities(self):
+    def test_has_5_capabilities(self):
         mod = ExperimentModule()
         caps = mod.capabilities()
 
-        assert len(caps) == 3
+        assert len(caps) == 5
 
     def test_list_protocols_handler(self):
         mod = ExperimentModule()

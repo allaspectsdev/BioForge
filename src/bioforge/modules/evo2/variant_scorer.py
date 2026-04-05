@@ -15,6 +15,12 @@ BASES = ["A", "T", "C", "G"]
 _DELETERIOUS_THRESHOLD = -0.5
 _BENEFICIAL_THRESHOLD = 0.5
 
+# Confidence regime thresholds
+_NEAR_THRESHOLD_MARGIN = 0.15  # score within this of a threshold boundary
+_SHORT_CONTEXT_BP = 50  # sequences shorter than this lose model context
+_EXTREME_GC_LOW = 0.25
+_EXTREME_GC_HIGH = 0.75
+
 
 def _interpret_score(score: float) -> str:
     """Map a delta log-likelihood score to a human-readable interpretation."""
@@ -23,6 +29,57 @@ def _interpret_score(score: float) -> str:
     if score >= _BENEFICIAL_THRESHOLD:
         return "beneficial"
     return "neutral"
+
+
+def _compute_gc_content(sequence: str) -> float:
+    """Compute GC content of a sequence."""
+    if not sequence:
+        return 0.0
+    upper = sequence.upper()
+    gc = sum(1 for b in upper if b in ("G", "C"))
+    return gc / len(upper)
+
+
+def _assess_confidence(
+    score: float,
+    sequence: str,
+    position: int,
+) -> tuple[float, list[str]]:
+    """Assess confidence of a variant prediction.
+
+    Returns (confidence, list_of_flags) where confidence is in [0, 1].
+    Flags explain why confidence was reduced.
+    """
+    confidence = 1.0
+    flags: list[str] = []
+
+    # Near-threshold: score is close to deleterious/beneficial boundary
+    dist_to_del = abs(score - _DELETERIOUS_THRESHOLD)
+    dist_to_ben = abs(score - _BENEFICIAL_THRESHOLD)
+    if dist_to_del < _NEAR_THRESHOLD_MARGIN or dist_to_ben < _NEAR_THRESHOLD_MARGIN:
+        confidence -= 0.3
+        flags.append("near_threshold")
+
+    # Short context: less sequence for the model to work with
+    if len(sequence) < _SHORT_CONTEXT_BP:
+        confidence -= 0.3
+        flags.append("short_context")
+
+    # Position near edge: model has less context on one side
+    edge_dist = min(position, len(sequence) - 1 - position)
+    if edge_dist < 10:
+        confidence -= 0.15
+        flags.append("near_sequence_edge")
+
+    # Extreme GC content in local window
+    window_start = max(0, position - 25)
+    window_end = min(len(sequence), position + 25)
+    local_gc = _compute_gc_content(sequence[window_start:window_end])
+    if local_gc < _EXTREME_GC_LOW or local_gc > _EXTREME_GC_HIGH:
+        confidence -= 0.15
+        flags.append("extreme_gc")
+
+    return max(0.05, round(confidence, 2)), flags
 
 
 class VariantEffectPredictor:
@@ -75,6 +132,8 @@ class VariantEffectPredictor:
                 "alt_base": alt_base,
                 "score": 0.0,
                 "interpretation": "neutral",
+                "confidence": 1.0,
+                "confidence_flags": [],
             }
 
         scores = await self._client.score_variants(
@@ -82,6 +141,7 @@ class VariantEffectPredictor:
             [(position, ref_base, alt_base)],
         )
         score = scores[0]
+        confidence, flags = _assess_confidence(score, sequence, position)
 
         return {
             "position": position,
@@ -89,6 +149,8 @@ class VariantEffectPredictor:
             "alt_base": alt_base,
             "score": round(score, 6),
             "interpretation": _interpret_score(score),
+            "confidence": confidence,
+            "confidence_flags": flags,
         }
 
     async def scan_variants(
@@ -143,6 +205,7 @@ class VariantEffectPredictor:
 
         results: list[dict[str, Any]] = []
         for (pos, ref, alt), score in zip(mutations, scores):
+            confidence, flags = _assess_confidence(score, sequence, pos)
             results.append(
                 {
                     "position": pos,
@@ -150,6 +213,8 @@ class VariantEffectPredictor:
                     "alt_base": alt,
                     "score": round(score, 6),
                     "interpretation": _interpret_score(score),
+                    "confidence": confidence,
+                    "confidence_flags": flags,
                 }
             )
 
